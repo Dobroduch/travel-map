@@ -105,37 +105,6 @@ export function openDialog({
   overlay.hidden = false;
 }
 
-/**
- * A simple scrollable list inside the same dialog card, for overflow views
- * like "see all cities in a country". No edit/delete actions.
- */
-export function openListDialog({ title, subtitle = "", rows, onRowClick }) {
-  titleEl.textContent = title;
-  subtitleEl.textContent = subtitle;
-  iconEl.hidden = true;
-  iconEl.removeAttribute("src");
-
-  editBtn.hidden = true;
-  editBtn.onclick = null;
-  deleteBtn.hidden = true;
-  deleteBtn.onclick = null;
-
-  bodyEl.innerHTML = `<div class="entity-list">${rows
-    .map(
-      (r) =>
-        `<button type="button" class="entity-row" data-id="${r.id}"><span class="entity-name">${escapeHtml(
-          r.name
-        )}</span><span class="entity-count">${r.meta || ""}</span></button>`
-    )
-    .join("")}</div>`;
-
-  bodyEl.querySelectorAll(".entity-row").forEach((btn) => {
-    btn.addEventListener("click", () => onRowClick(btn.dataset.id));
-  });
-
-  overlay.hidden = false;
-}
-
 export function closeDialog() {
   overlay.hidden = true;
 }

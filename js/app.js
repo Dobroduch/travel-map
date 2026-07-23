@@ -10,7 +10,7 @@ import {
 } from "./data.js";
 import { loadData, saveData, exportData, importData, deleteAllData } from "./storage.js";
 import { createMap } from "./map.js";
-import { initDialog, openDialog, openListDialog, closeDialog } from "./dialog.js";
+import { initDialog, openDialog, closeDialog } from "./dialog.js";
 import { initEditor, openCityForm, openCountryForm, openFlightForm, openCountryEditor } from "./editor.js";
 import { icons } from "./icons.js";
 import { escapeHtml, foldDiacritics, formatDateDMY } from "./util.js";
@@ -30,7 +30,6 @@ import {
 } from "./flightstats.js";
 
 const HOME_BASE_LIMIT = 2;
-const CITY_LIST_CAP = 30;
 const THEME_KEY = "travel-map-theme";
 const ONBOARDING_DISMISSED_KEY = "travel-map-onboarding-dismissed";
 
@@ -285,12 +284,20 @@ async function editFlight(connIndex) {
 function deleteFlight(connIndex) {
   const conn = data.connections[connIndex];
   if (!conn) return;
-  if (!confirm("Delete this flight?")) return;
+
+  const fromName = resolveLegLabel(conn.from, conn.departureAirport, index.citiesById, airportsByCode);
+  const toName = resolveLegLabel(conn.to, conn.arrivalAirport, index.citiesById, airportsByCode);
 
   data.connections.splice(connIndex, 1);
-
   closeDialog();
   persistAndRefreshMap();
+  rerenderCurrentView();
+
+  showUndoToast(`${fromName} → ${toName} deleted`, () => {
+    data.connections.splice(connIndex, 0, conn);
+    persistAndRefreshMap();
+    rerenderCurrentView();
+  });
 }
 
 async function editCity(cityId) {
@@ -312,13 +319,31 @@ async function editCity(cityId) {
 function deleteCity(cityId) {
   const city = index.citiesById.get(cityId);
   if (!city) return;
-  if (!confirm(`Delete ${city.name}? This also removes any flights to or from it.`)) return;
+
+  const cityIndex = data.cities.findIndex((c) => c.id === cityId);
+  const removedConnections = [];
+  data.connections.forEach((c, i) => {
+    if (c.from === cityId || c.to === cityId) removedConnections.push({ conn: c, i });
+  });
 
   data.cities = data.cities.filter((c) => c.id !== cityId);
   data.connections = data.connections.filter((c) => c.from !== cityId && c.to !== cityId);
 
   closeDialog();
   persistAndRefreshMap();
+  rerenderCurrentView();
+
+  const flightNote = removedConnections.length
+    ? ` (and ${removedConnections.length} ${removedConnections.length === 1 ? "flight" : "flights"})`
+    : "";
+  showUndoToast(`${city.name} deleted${flightNote}`, () => {
+    data.cities.splice(cityIndex, 0, city);
+    for (const { conn, i } of removedConnections) {
+      data.connections.splice(Math.min(i, data.connections.length), 0, conn);
+    }
+    persistAndRefreshMap();
+    rerenderCurrentView();
+  });
 }
 
 function removeCountry(code) {
@@ -430,6 +455,42 @@ function showOfflineToast(message) {
   toast.classList.add("visible");
   clearTimeout(showOfflineToast._t);
   showOfflineToast._t = setTimeout(() => toast.classList.remove("visible"), 2500);
+}
+
+let pendingUndo = null;
+
+/** Shows a toast with an Undo button after an optimistic delete. Only one
+ * undo is live at a time — starting a new one abandons the previous delete
+ * (it just stays deleted), the same "last action only" behavior as Gmail's
+ * undo send. */
+function showUndoToast(message, restore) {
+  if (pendingUndo) clearTimeout(pendingUndo.timer);
+
+  let toast = document.querySelector(".undo-toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.className = "undo-toast";
+    toast.innerHTML = `<span class="undo-toast-text"></span><button type="button" class="undo-toast-btn">Undo</button>`;
+    toast.querySelector(".undo-toast-btn").addEventListener("click", () => {
+      if (!pendingUndo) return;
+      clearTimeout(pendingUndo.timer);
+      const { restore: doRestore } = pendingUndo;
+      pendingUndo = null;
+      toast.classList.remove("visible");
+      doRestore();
+    });
+    document.body.appendChild(toast);
+  }
+
+  toast.querySelector(".undo-toast-text").textContent = message;
+  toast.classList.add("visible");
+  pendingUndo = {
+    restore,
+    timer: setTimeout(() => {
+      toast.classList.remove("visible");
+      pendingUndo = null;
+    }, 6000),
+  };
 }
 
 function setupSearch() {
@@ -583,6 +644,11 @@ function renderCountryFlag(code) {
   return `<img src="${url}" alt="" class="country-flag" onerror="this.style.visibility='hidden'" />`;
 }
 
+// Slight per-stamp rotation, cycled by index rather than randomized, so a
+// re-render doesn't jitter the layout — just enough tilt to read as
+// hand-stamped rather than a rigid grid.
+const STAMP_TILTS = [-4, 3, -2, 5, -3, 2, -5, 4, -1, 3.5];
+
 function renderCountriesPage() {
   const container = document.getElementById("view-countries");
 
@@ -593,7 +659,7 @@ function renderCountriesPage() {
       const name = allCities[0]?.country || countryNameForCode(code);
       return { code, name, count: cities.length, homeBase: isHomeBaseCountry(code) };
     })
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   if (!rows.length) {
     container.innerHTML = `<div class="page-panel"><h2>Countries</h2><p class="page-hint">No countries marked as visited yet. Use the + button on the map to add one.</p></div>`;
@@ -604,138 +670,32 @@ function renderCountriesPage() {
     <div class="page-panel">
       <h2>Countries</h2>
       <p class="page-hint">${rows.length} ${rows.length === 1 ? "country" : "countries"} visited</p>
-      <div class="entity-list">
+      <div class="passport-grid">
         ${rows
           .map(
-            (r) => `
-          <div class="country-block" data-code="${r.code}">
-            <button type="button" class="country-row">
-              <span class="entity-name entity-name-with-icon">${renderCountryFlag(r.code)}${escapeHtml(r.name)}${r.homeBase ? " · Home base" : ""}</span>
-              <span class="entity-count">
-                <span class="country-row-count-text">${r.count ? `${r.count} ${r.count === 1 ? "city" : "cities"}` : "Marked visited"}</span>
-                <span class="country-row-chevron">${icons.chevron(16)}</span>
-              </span>
-            </button>
-            <div class="country-expand" hidden></div>
-          </div>`
+            (r, i) => `
+          <button
+            type="button"
+            class="passport-stamp${r.homeBase ? " passport-stamp-home" : ""}"
+            data-code="${r.code}"
+            style="--stamp-tilt: ${STAMP_TILTS[i % STAMP_TILTS.length]}deg"
+          >
+            <span class="passport-stamp-ring">
+              <span class="passport-stamp-flag">${renderCountryFlag(r.code)}</span>
+            </span>
+            <span class="passport-stamp-name">${escapeHtml(r.name)}</span>
+            <span class="passport-stamp-meta">${
+              r.homeBase ? "Home base" : r.count ? `${r.count} ${r.count === 1 ? "city" : "cities"}` : "Visited"
+            }</span>
+          </button>`
           )
           .join("")}
       </div>
     </div>
   `;
 
-  container.querySelectorAll(".country-block").forEach((block) => {
-    const code = block.dataset.code;
-    const row = block.querySelector(".country-row");
-    const expand = block.querySelector(".country-expand");
-
-    row.addEventListener("click", () => {
-      const isOpen = block.classList.contains("expanded");
-      if (isOpen) {
-        block.classList.remove("expanded");
-        expand.hidden = true;
-        return;
-      }
-      block.classList.add("expanded");
-      expand.hidden = false;
-      renderCountryExpansion(code, expand);
-    });
-  });
-}
-
-function updateCountryRowCount(code) {
-  const block = document.querySelector(`.country-block[data-code="${code}"]`);
-  if (!block) return;
-  const cities = visibleCities(index.citiesByCountry.get(code) || []);
-  const label = cities.length ? `${cities.length} ${cities.length === 1 ? "city" : "cities"}` : "Marked visited";
-  const textEl = block.querySelector(".country-row-count-text");
-  if (textEl) textEl.textContent = label;
-}
-
-function renderCityMiniRow(c) {
-  const flightCount = (index.connectionsByCity.get(c.id) || []).length;
-  return `
-    <div class="city-mini-row" data-id="${c.id}">
-      <div class="city-mini-main">
-        <span class="city-mini-name">${escapeHtml(c.name)}</span>
-        ${flightCount ? `<span class="city-mini-flights">${icons.plane(12)}${flightCount}</span>` : ""}
-      </div>
-      <div class="city-mini-actions">
-        <button type="button" class="icon-btn-sm city-mini-edit" data-id="${c.id}" aria-label="Edit ${escapeHtml(c.name)}">${icons.pencil(14)}</button>
-        <button type="button" class="icon-btn-sm icon-btn-danger city-mini-delete" data-id="${c.id}" aria-label="Delete ${escapeHtml(c.name)}">${icons.trash(14)}</button>
-      </div>
-    </div>`;
-}
-
-function renderCountryExpansion(code, container) {
-  const cities = visibleCities(index.citiesByCountry.get(code) || []);
-
-  const sorted = [...cities].sort((a, b) => {
-    const aFlights = (index.connectionsByCity.get(a.id) || []).length;
-    const bFlights = (index.connectionsByCity.get(b.id) || []).length;
-    if (aFlights !== bFlights) return bFlights - aFlights;
-    return a.name.localeCompare(b.name);
-  });
-
-  const visible = sorted.slice(0, CITY_LIST_CAP);
-  const overflowCount = sorted.length - visible.length;
-
-  container.innerHTML = `
-    ${visible.map(renderCityMiniRow).join("")}
-    ${
-      overflowCount > 0
-        ? `<div class="see-all-row"><button type="button" class="see-all-btn">See all ${sorted.length} cities</button></div>`
-        : ""
-    }
-    <div class="country-remove-row"><button type="button" class="country-remove-btn">Remove country from visited</button></div>
-  `;
-
-  container.querySelectorAll(".city-mini-row").forEach((row) => {
-    row.addEventListener("click", (e) => {
-      if (e.target.closest(".icon-btn-sm")) return;
-      openCityDialog(row.dataset.id);
-    });
-  });
-
-  container.querySelectorAll(".city-mini-edit").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      await editCity(btn.dataset.id);
-      renderCountriesPage();
-    });
-  });
-
-  container.querySelectorAll(".city-mini-delete").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      deleteCity(btn.dataset.id);
-      renderCountryExpansion(code, container);
-      updateCountryRowCount(code);
-    });
-  });
-
-  const seeAllBtn = container.querySelector(".see-all-btn");
-  if (seeAllBtn) {
-    seeAllBtn.addEventListener("click", () => {
-      openListDialog({
-        title: countryNameForCode(code),
-        subtitle: `${sorted.length} cities`,
-        rows: sorted.map((c) => {
-          const flightCount = (index.connectionsByCity.get(c.id) || []).length;
-          return {
-            id: c.id,
-            name: c.name,
-            meta: flightCount ? `${flightCount} flight${flightCount === 1 ? "" : "s"}` : "",
-          };
-        }),
-        onRowClick: (cityId) => openCityDialog(cityId),
-      });
-    });
-  }
-
-  container.querySelector(".country-remove-btn").addEventListener("click", () => {
-    removeCountry(code);
-    renderCountriesPage();
+  container.querySelectorAll(".passport-stamp").forEach((btn) => {
+    btn.addEventListener("click", () => openCountryDialog(btn.dataset.code));
   });
 }
 
