@@ -878,7 +878,9 @@ function buildFlightsListHtml(rows, sortMode) {
             .join("")}</div></div>`
       )
       .join("");
-    html += `<div class="timeline-year"><h3>${year}</h3>${monthsHtml}</div>`;
+    const yearTotals = yearGroups.get(year).reduce((acc, r) => ({ km: acc.km + r.km, hours: acc.hours + r.hours }), { km: 0, hours: 0 });
+    const yearStats = `<span class="year-flight-stats">${formatDistanceKm(yearTotals.km)} · ${formatDuration(yearTotals.hours)}</span>`;
+    html += `<div class="timeline-year"><h3>${year} ${yearStats}</h3>${monthsHtml}</div>`;
   }
   if (undated.length) {
     html += `<div class="timeline-year"><h3>Undated</h3><div class="entity-list">${undated
@@ -914,6 +916,7 @@ function renderFlightsPage() {
     i,
     date: parseDateSafe(conn.date),
     km: breakdown.perFlight[i].km,
+    hours: breakdown.perFlight[i].hours,
   }));
 
   const rows = flightsListAirline
