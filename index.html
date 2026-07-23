@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("travel-map-theme");
+        if (saved === "light" || saved === "dark") {
+          document.documentElement.dataset.theme = saved;
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Travel Map</title>
+  <meta name="description" content="An interactive map of the places I've visited." />
+  <meta name="theme-color" content="#faf8f4" />
+
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Travel Map" />
+
+  <link rel="stylesheet" href="vendor/maplibre-gl.css" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <h1>My Travel Map</h1>
+      <div class="search-wrap">
+        <span id="search-icon" class="search-icon"></span>
+        <input id="search-input" type="search" placeholder="Search any city..." autocomplete="off" />
+        <div id="search-results" class="search-results" hidden></div>
+      </div>
+      <button id="theme-toggle" class="topbar-btn" type="button" aria-label="Toggle dark mode"></button>
+    </header>
+
+    <nav id="sidebar">
+      <button class="nav-item active" data-view="map" type="button">
+        <span class="nav-icon" data-icon="map"></span><span class="nav-label">Map</span>
+      </button>
+      <button class="nav-item" data-view="countries" type="button">
+        <span class="nav-icon" data-icon="globe"></span><span class="nav-label">Countries</span>
+      </button>
+      <button class="nav-item" data-view="timeline" type="button">
+        <span class="nav-icon" data-icon="clock"></span><span class="nav-label">Timeline</span>
+      </button>
+      <button class="nav-item" data-view="flights" type="button">
+        <span class="nav-icon" data-icon="plane"></span><span class="nav-label">Flights</span>
+      </button>
+      <button class="nav-item" data-view="settings" type="button">
+        <span class="nav-icon" data-icon="sliders"></span><span class="nav-label">Settings</span>
+      </button>
+    </nav>
+
+    <main id="view-map" class="view">
+      <div id="map"></div>
+
+      <div id="map-toggle-wrap">
+        <button id="toggle-routes" class="map-toggle-btn" type="button" aria-pressed="true" aria-label="Toggle flight paths">
+          <span data-icon="plane"></span>
+        </button>
+        <button id="toggle-home-cities" class="map-toggle-btn" type="button" aria-pressed="true" aria-label="Toggle home country cities">
+          <span data-icon="home"></span>
+        </button>
+        <button id="toggle-all-cities" class="map-toggle-btn" type="button" aria-pressed="true" aria-label="Toggle all visited cities">
+          <span data-icon="pin"></span>
+        </button>
+        <button id="toggle-flight-filter" class="map-toggle-btn" type="button" aria-pressed="false" aria-label="Filter flights">
+          <span data-icon="filter"></span>
+        </button>
+      </div>
+
+      <div id="flight-filter-panel" class="flight-filter-panel" hidden>
+        <div class="form-row">
+          <label for="filter-year">Year</label>
+          <select id="filter-year"><option value="">All years</option></select>
+        </div>
+        <div class="form-row">
+          <label for="filter-airline">Airline</label>
+          <select id="filter-airline"><option value="">All airlines</option></select>
+        </div>
+        <button type="button" id="filter-clear" class="link-btn">Clear filters</button>
+      </div>
+
+      <div id="fab-wrap">
+        <div id="fab-menu" class="fab-menu" hidden>
+          <button data-action="add-city" type="button"><span data-icon="pin"></span>Add city or place</button>
+          <button data-action="add-country" type="button"><span data-icon="globe"></span>Add country</button>
+          <button data-action="add-flight" type="button"><span data-icon="plane"></span>Add flight</button>
+        </div>
+        <button id="fab-add" class="fab" aria-label="Add" type="button"></button>
+      </div>
+    </main>
+
+    <section id="view-countries" class="view" hidden></section>
+
+    <section id="view-timeline" class="view" hidden></section>
+
+    <section id="view-flights" class="view" hidden></section>
+
+    <section id="view-settings" class="view" hidden>
+      <div class="settings-panel">
+        <h2>Your data</h2>
+        <p class="settings-hint">
+          Cities, countries, and flights you add are saved automatically in this browser. Use these to back up your
+          data or move it to another device.
+        </p>
+        <div class="settings-actions">
+          <button id="btn-export" type="button"><span data-icon="download"></span>Export data (.json)</button>
+          <button id="btn-import" type="button"><span data-icon="upload"></span>Import data (.json)</button>
+          <button id="btn-reset" type="button" class="btn-danger"><span data-icon="trash"></span>Delete all data</button>
+        </div>
+        <input id="import-file-input" type="file" accept="application/json" hidden />
+      </div>
+
+      <div class="settings-panel" id="sync-panel">
+        <h2>Sync across devices</h2>
+        <p class="settings-hint">
+          Connect a free Google Firebase project to keep this data in sync between your phone and desktop
+          automatically. Everything still works offline without this — it's entirely optional.
+        </p>
+
+        <div id="sync-disconnected">
+          <details class="sync-help">
+            <summary>How to set this up (one-time, ~5 minutes)</summary>
+            <ol>
+              <li>Go to <strong>console.firebase.google.com</strong> and create a free project.</li>
+              <li>In the project, open <strong>Build → Firestore Database</strong> and click "Create database" (start in test mode is fine to begin with).</li>
+              <li>
+                In Firestore's <strong>Rules</strong> tab, paste this and publish it:
+                <pre class="sync-rules">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /travelMapSync/{syncId} {
+      allow read, write: if true;
+    }
+  }
+}</pre>
+                This keeps setup simple by skipping sign-in — treat your sync code below like a password, since anyone with it could read or write this document.
+              </li>
+              <li>
+                Back in the project overview, click the <strong>&lt;/&gt; (web) icon</strong> to register a web app, then copy the
+                <code>firebaseConfig</code> object it shows you.
+              </li>
+              <li>Paste that config below, pick a sync code (any string only you know), and connect on both devices with the same code.</li>
+            </ol>
+          </details>
+          <div class="form-row">
+            <label for="sync-config-input">Firebase config (paste the whole object)</label>
+            <textarea id="sync-config-input" rows="5" placeholder='{"apiKey": "...", "projectId": "...", ...}'></textarea>
+          </div>
+          <div class="form-row">
+            <label for="sync-code-input">Sync code</label>
+            <input id="sync-code-input" type="text" placeholder="e.g. a private phrase only you know" />
+          </div>
+          <p class="form-error" id="sync-error" hidden></p>
+          <div class="settings-actions">
+            <button id="btn-sync-connect" type="button"><span data-icon="refresh"></span>Connect &amp; sync</button>
+          </div>
+        </div>
+
+        <div id="sync-connected" hidden>
+          <p class="sync-status" id="sync-status">Connected.</p>
+          <div class="settings-actions">
+            <button id="btn-sync-now" type="button"><span data-icon="refresh"></span>Sync now</button>
+            <button id="btn-sync-disconnect" type="button" class="btn-danger"><span data-icon="trash"></span>Disconnect</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="dialog-overlay" class="dialog-overlay" hidden>
+    <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+      <div class="dialog-header">
+        <div>
+          <div class="dialog-title-row">
+            <img id="dialog-icon" class="dialog-icon" alt="" hidden />
+            <h2 id="dialog-title"></h2>
+          </div>
+          <p id="dialog-subtitle" class="dialog-subtitle"></p>
+        </div>
+        <div class="dialog-header-actions">
+          <button id="dialog-edit" class="icon-btn" aria-label="Edit" hidden></button>
+          <button id="dialog-delete" class="icon-btn icon-btn-danger" aria-label="Delete" hidden></button>
+          <button id="dialog-close" class="pill-btn" aria-label="Close"></button>
+        </div>
+      </div>
+      <div id="dialog-body" class="dialog-body"></div>
+    </div>
+  </div>
+
+  <div id="editor-overlay" class="dialog-overlay" hidden>
+    <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+      <div class="dialog-header">
+        <div>
+          <h2 id="editor-title"></h2>
+        </div>
+        <div class="dialog-header-actions">
+          <button id="editor-close" class="pill-btn" aria-label="Close"></button>
+        </div>
+      </div>
+      <form id="editor-form" class="editor-form"></form>
+    </div>
+  </div>
+
+  <div id="pick-banner" class="pick-banner" hidden>
+    <span id="pick-banner-text"></span>
+    <button id="pick-banner-cancel" type="button">Cancel</button>
+  </div>
+
+  <script src="vendor/maplibre-gl.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

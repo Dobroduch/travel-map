@@ -1,0 +1,215 @@
+{
+  "visitedCountries": [
+    "SVK",
+    "AUT",
+    "ITA",
+    "FRA",
+    "TUR",
+    "THA",
+    "JPN",
+    "USA",
+    "ISL"
+  ],
+  "cities": [
+    {
+      "id": "bts",
+      "name": "Bratislava",
+      "country": "Slovakia",
+      "countryCode": "SVK",
+      "lat": 48.1486,
+      "lng": 17.1077,
+      "dates": [
+        "Home base"
+      ],
+      "notes": "Where it all starts.",
+      "population": 423737
+    },
+    {
+      "id": "vie",
+      "name": "Vienna",
+      "country": "Austria",
+      "countryCode": "AUT",
+      "lat": 48.2082,
+      "lng": 16.3738,
+      "dates": [
+        "2023-04-02"
+      ],
+      "notes": "Weekend trip along the Danube.",
+      "population": 1691468
+    },
+    {
+      "id": "rom",
+      "name": "Rome",
+      "country": "Italy",
+      "countryCode": "ITA",
+      "lat": 41.9028,
+      "lng": 12.4964,
+      "dates": [
+        "2023-06-14",
+        "2023-06-18"
+      ],
+      "notes": "Colosseum, espresso, and far too much walking.",
+      "population": 2318895
+    },
+    {
+      "id": "par",
+      "name": "Paris",
+      "country": "France",
+      "countryCode": "FRA",
+      "lat": 48.8566,
+      "lng": 2.3522,
+      "dates": [
+        "2023-06-19"
+      ],
+      "notes": "Layover turned into a day trip to the Louvre.",
+      "population": 2138551
+    },
+    {
+      "id": "ist",
+      "name": "Istanbul",
+      "country": "Turkey",
+      "countryCode": "TUR",
+      "lat": 41.0082,
+      "lng": 28.9784,
+      "dates": [
+        "2024-01-10"
+      ],
+      "notes": "Connecting flight, Bosphorus views from the terminal.",
+      "population": 15701602
+    },
+    {
+      "id": "bkk",
+      "name": "Bangkok",
+      "country": "Thailand",
+      "countryCode": "THA",
+      "lat": 13.7563,
+      "lng": 100.5018,
+      "dates": [
+        "2024-01-11",
+        "2024-01-16"
+      ],
+      "notes": "Street food crawl through Chinatown.",
+      "population": 5104476
+    },
+    {
+      "id": "hnd",
+      "name": "Tokyo",
+      "country": "Japan",
+      "countryCode": "JPN",
+      "lat": 35.6762,
+      "lng": 139.6503,
+      "dates": [
+        "2024-01-17",
+        "2024-01-24"
+      ],
+      "notes": "Shinkansen to Kyoto and back.",
+      "population": 9733276
+    },
+    {
+      "id": "jfk",
+      "name": "New York",
+      "country": "United States",
+      "countryCode": "USA",
+      "lat": 40.7128,
+      "lng": -74.006,
+      "dates": [
+        "2024-09-03",
+        "2024-09-09"
+      ],
+      "notes": "First time seeing the skyline from the Staten Island Ferry.",
+      "population": 8804190
+    },
+    {
+      "id": "kef",
+      "name": "Reykjavik",
+      "country": "Iceland",
+      "countryCode": "ISL",
+      "lat": 64.1466,
+      "lng": -21.9426,
+      "dates": [
+        "2024-09-10"
+      ],
+      "notes": "Layover extended into a two-day detour for the Blue Lagoon.",
+      "population": 118918
+    }
+  ],
+  "connections": [
+    {
+      "from": "bts",
+      "to": "vie",
+      "date": "2023-04-02",
+      "flightNumber": "OS 6749",
+      "type": "direct"
+    },
+    {
+      "from": "bts",
+      "to": "rom",
+      "date": "2023-06-14",
+      "flightNumber": "FR 1234",
+      "type": "direct"
+    },
+    {
+      "from": "rom",
+      "to": "par",
+      "date": "2023-06-19",
+      "flightNumber": "AF 1483",
+      "type": "layover"
+    },
+    {
+      "from": "par",
+      "to": "bts",
+      "date": "2023-06-19",
+      "flightNumber": "AF 1726",
+      "type": "direct"
+    },
+    {
+      "from": "bts",
+      "to": "ist",
+      "date": "2024-01-10",
+      "flightNumber": "TK 1053",
+      "type": "layover"
+    },
+    {
+      "from": "ist",
+      "to": "bkk",
+      "date": "2024-01-10",
+      "flightNumber": "TK 64",
+      "type": "direct"
+    },
+    {
+      "from": "bkk",
+      "to": "hnd",
+      "date": "2024-01-16",
+      "flightNumber": "JL 718",
+      "type": "direct"
+    },
+    {
+      "from": "hnd",
+      "to": "bts",
+      "date": "2024-01-24",
+      "flightNumber": "LH 716",
+      "type": "layover"
+    },
+    {
+      "from": "bts",
+      "to": "jfk",
+      "date": "2024-09-03",
+      "flightNumber": "LX 16",
+      "type": "layover"
+    },
+    {
+      "from": "jfk",
+      "to": "kef",
+      "date": "2024-09-09",
+      "flightNumber": "FI 632",
+      "type": "layover"
+    },
+    {
+      "from": "kef",
+      "to": "bts",
+      "date": "2024-09-11",
+      "flightNumber": "FI 241",
+      "type": "layover"
+    }
+  ]
+}
