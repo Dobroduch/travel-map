@@ -1629,7 +1629,11 @@ button {
 
 @media (max-width: 639px) {
   :root {
-    --bottomnav-h: 60px;
+    /* The row track must include the safe-area inset, not just pad into it —
+     * otherwise the nav buttons need more height than the track has, overflow
+     * upward into the view above, and get painted over (visible as the active
+     * tab's highlight being cut off partway up). */
+    --bottomnav-h: calc(60px + env(safe-area-inset-bottom, 0px));
   }
 
   #app {
