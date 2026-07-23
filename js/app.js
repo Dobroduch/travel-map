@@ -32,6 +32,7 @@ import {
 const HOME_BASE_LIMIT = 2;
 const CITY_LIST_CAP = 30;
 const THEME_KEY = "travel-map-theme";
+const ONBOARDING_DISMISSED_KEY = "travel-map-onboarding-dismissed";
 
 let data;
 let index;
@@ -59,6 +60,23 @@ function refreshIndexes() {
   index = buildIndex(data);
 }
 
+/** Shows a one-time arrow-and-bubble pointing at the FAB when there's nothing
+ * logged yet, so a first-time visitor knows where to start. Hides itself the
+ * moment there's any data, or if the visitor dismisses it directly. */
+function updateOnboardingHint() {
+  const hint = document.getElementById("onboarding-hint");
+  if (!hint) return;
+  const isEmpty = !data.cities.length && !data.connections.length && !data.visitedCountries.length;
+  const dismissed = localStorage.getItem(ONBOARDING_DISMISSED_KEY) === "1";
+  hint.hidden = !isEmpty || dismissed;
+}
+
+function dismissOnboardingHint() {
+  localStorage.setItem(ONBOARDING_DISMISSED_KEY, "1");
+  const hint = document.getElementById("onboarding-hint");
+  if (hint) hint.hidden = true;
+}
+
 let syncConnected = false;
 let syncPushTimer = null;
 let applyingRemoteSync = false;
@@ -82,6 +100,7 @@ function persistAndRefreshMap() {
   mapHandle.updateData(data, index.citiesById);
   applyFlightFilter();
   schedulePushToSync();
+  updateOnboardingHint();
 }
 
 /** Re-renders whichever page is currently on screen, so a remote update from the
@@ -1245,7 +1264,11 @@ function setupFab() {
 
   fabBtn.addEventListener("click", () => {
     menu.hidden = !menu.hidden;
+    dismissOnboardingHint();
   });
+
+  const hint = document.getElementById("onboarding-hint");
+  if (hint) hint.addEventListener("click", () => dismissOnboardingHint());
 
   menu.addEventListener("click", async (e) => {
     const btn = e.target.closest("button[data-action]");
@@ -1657,6 +1680,7 @@ async function main() {
   setupSearch();
   setupSidebar();
   setupFab();
+  updateOnboardingHint();
   setupSettings();
   setupSync();
   setupTheme();

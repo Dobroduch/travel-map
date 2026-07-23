@@ -1,10 +1,5 @@
 import { foldDiacritics } from "./util.js";
 
-export async function loadTravelData() {
-  const res = await fetch("data/travel-data.json");
-  return res.json();
-}
-
 export async function loadCountriesGeoJson() {
   const res = await fetch("data/countries.geojson");
   return res.json();

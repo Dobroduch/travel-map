@@ -1,8 +1,7 @@
 const STORAGE_KEY = "travel-map-data-v1";
 
-async function fetchShippedData() {
-  const res = await fetch("data/travel-data.json");
-  return res.json();
+function emptyData() {
+  return { visitedCountries: [], homeBaseCountries: [], cities: [], connections: [] };
 }
 
 export async function loadData() {
@@ -11,10 +10,10 @@ export async function loadData() {
     try {
       return JSON.parse(raw);
     } catch {
-      // fall through to reseed from the shipped file if local data is corrupt
+      // fall through to a fresh empty start if local data is corrupt
     }
   }
-  const seed = await fetchShippedData();
+  const seed = emptyData();
   saveData(seed);
   return seed;
 }

@@ -858,6 +858,51 @@ button {
   transform: scale(1.05);
 }
 
+.onboarding-hint {
+  position: absolute;
+  right: 20px;
+  bottom: 92px;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  animation: onboarding-bob 2.2s ease-in-out infinite;
+}
+
+.onboarding-hint[hidden] {
+  display: none;
+}
+
+.onboarding-bubble {
+  max-width: 190px;
+  background: var(--accent);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 14px 14px 2px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: right;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.onboarding-arrow {
+  color: var(--accent);
+  margin-right: 18px;
+}
+
+@keyframes onboarding-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
+  }
+}
+
 .fab::after {
   content: "";
   width: 20px;
@@ -1576,25 +1621,64 @@ button {
   transform: translateX(-50%) translateY(-8px);
 }
 
-/* --- responsive: narrow phones --- */
+/* --- responsive: mobile app shell ---
+ * Below the same 640px threshold where dialogs switch to bottom sheets, the
+ * side nav becomes a bottom tab bar (the modern mobile-app pattern) instead of
+ * just shrinking a vertical sidebar, and the FAB/onboarding hint shift up to
+ * clear it. */
 
-@media (max-width: 520px) {
+@media (max-width: 639px) {
   :root {
-    --sidebar-w: 64px;
+    --bottomnav-h: 60px;
   }
+
+  #app {
+    grid-template-columns: 1fr;
+    grid-template-rows: var(--topbar-h) 1fr var(--bottomnav-h);
+    grid-template-areas: "topbar" "main" "sidebar";
+  }
+
+  #sidebar {
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: space-around;
+    gap: 0;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+    border-right: none;
+    border-top: 1px solid var(--border);
+    overflow: visible;
+  }
+
+  .nav-item {
+    flex: 1;
+    padding: 6px 2px;
+    font-size: 10.5px;
+    border-radius: 10px;
+  }
+
   #topbar h1 {
     display: none;
   }
-  .nav-item {
-    font-size: 9.5px;
-  }
-}
 
-@media (max-width: 460px) {
+  #fab-wrap {
+    right: 16px;
+    bottom: calc(var(--bottomnav-h) + 18px);
+  }
+
+  .onboarding-hint {
+    right: 14px;
+    bottom: calc(var(--bottomnav-h) + 84px);
+  }
+
   .form-row-split {
     grid-template-columns: 1fr;
   }
+
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dialog-card {
+    padding-bottom: calc(30px + env(safe-area-inset-bottom, 0px));
   }
 }
