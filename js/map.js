@@ -30,6 +30,7 @@ const THEME = {
     outline: "#2e7d32",
     accent: "#c9622a",
     homeBase: "#2f4858",
+    trip: "#8e44ad",
   },
   dark: {
     fillLow: "#3d5c3d",
@@ -38,6 +39,7 @@ const THEME = {
     outline: "#66bb6a",
     accent: "#e07b48",
     homeBase: "#7ab3d1",
+    trip: "#c792ea",
   },
 };
 
@@ -107,7 +109,30 @@ function cityTier(population) {
   return 1;
 }
 
-function citiesToGeoJson(cities, homeBaseCodes) {
+/** IDs of every visited city that belongs to at least one trip — either
+ * explicitly selected into it, or (for trips that still use a date range)
+ * having a visit date inside it. Shown in its own map color, the same way
+ * home-base cities always get theirs. */
+function tripCityIdSet(cities, trips) {
+  const ids = new Set();
+  if (!trips || !trips.length) return ids;
+  for (const trip of trips) {
+    const explicit = new Set(trip.cityIds || []);
+    for (const city of cities) {
+      if (city.visited === false) continue;
+      if (explicit.has(city.id)) {
+        ids.add(city.id);
+        continue;
+      }
+      if (trip.startDate && trip.endDate && (city.dates || []).some((d) => d >= trip.startDate && d <= trip.endDate)) {
+        ids.add(city.id);
+      }
+    }
+  }
+  return ids;
+}
+
+function citiesToGeoJson(cities, homeBaseCodes, tripCityIds) {
   return {
     type: "FeatureCollection",
     features: cities
@@ -120,6 +145,7 @@ function citiesToGeoJson(cities, homeBaseCodes) {
           name: c.name,
           country: c.country,
           homeBase: homeBaseCodes.has(c.countryCode),
+          inTrip: tripCityIds.has(c.id),
           sizeTier: cityTier(c.population),
         },
       })),
@@ -331,7 +357,7 @@ export function createMap({
 
     map.addSource("cities", {
       type: "geojson",
-      data: citiesToGeoJson(data.cities, new Set(data.homeBaseCountries || [])),
+      data: citiesToGeoJson(data.cities, new Set(data.homeBaseCountries || []), tripCityIdSet(data.cities, data.trips)),
     });
 
     map.addLayer({
@@ -344,7 +370,12 @@ export function createMap({
           1, ["step", ["get", "sizeTier"], 3, 2, 4.5, 3, 6.5, 4, 8.5],
           8, ["step", ["get", "sizeTier"], 6, 2, 9, 3, 12.5, 4, 16.5],
         ],
-        "circle-color": ["case", ["get", "homeBase"], theme.homeBase, theme.accent],
+        "circle-color": [
+          "case",
+          ["get", "homeBase"], theme.homeBase,
+          ["get", "inTrip"], theme.trip,
+          theme.accent,
+        ],
         "circle-opacity": 0.18,
       },
     });
@@ -359,7 +390,12 @@ export function createMap({
           1, ["step", ["get", "sizeTier"], 1.8, 2, 2.8, 3, 4, 4, 5.2],
           8, ["step", ["get", "sizeTier"], 3, 2, 4.5, 3, 6.5, 4, 9],
         ],
-        "circle-color": ["case", ["get", "homeBase"], theme.homeBase, theme.accent],
+        "circle-color": [
+          "case",
+          ["get", "homeBase"], theme.homeBase,
+          ["get", "inTrip"], theme.trip,
+          theme.accent,
+        ],
         "circle-stroke-color": "#ffffff",
         "circle-stroke-width": 1.5,
       },
@@ -413,7 +449,7 @@ export function createMap({
     map.getSource("countries").setData(markVisited(countriesGeojson, newData.visitedCountries, newData.cities, homeBaseCodes));
     map.getSource("routes").setData(connectionsToGeoJson(newData.connections, newCitiesById, airportsByCode));
     map.getSource("route-airports").setData(connectionAirportPointsGeoJson(newData.connections, newCitiesById, airportsByCode));
-    map.getSource("cities").setData(citiesToGeoJson(newData.cities, homeBaseCodes));
+    map.getSource("cities").setData(citiesToGeoJson(newData.cities, homeBaseCodes, tripCityIdSet(newData.cities, newData.trips)));
   }
 
   /** Redraws only the routes source from a caller-filtered subset of connections (e.g. by year/airline). */

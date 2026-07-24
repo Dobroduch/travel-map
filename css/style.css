@@ -11,6 +11,8 @@
   --tint-strong: rgba(36, 38, 31, 0.12);
   --danger: #b3402a;
   --danger-tint: rgba(179, 64, 42, 0.14);
+  --teal: #2f4858;
+  --teal-tint: rgba(47, 72, 88, 0.12);
   --shadow: 0 20px 60px rgba(36, 38, 31, 0.18);
   --topbar-h: 60px;
   --sidebar-w: 84px;
@@ -30,6 +32,8 @@
     --tint-strong: rgba(255, 255, 255, 0.14);
     --danger: #e2694a;
     --danger-tint: rgba(226, 105, 74, 0.18);
+    --teal: #3d5c6e;
+    --teal-tint: rgba(61, 92, 110, 0.2);
     --shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
   }
 }
@@ -47,6 +51,8 @@
   --tint-strong: rgba(255, 255, 255, 0.14);
   --danger: #e2694a;
   --danger-tint: rgba(226, 105, 74, 0.18);
+  --teal: #3d5c6e;
+  --teal-tint: rgba(61, 92, 110, 0.2);
   --shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
 }
 
@@ -492,6 +498,43 @@ button {
   font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+}
+
+.trip-city-heading {
+  margin: 4px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.trip-city-checklist {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 12px;
+  margin-bottom: 14px;
+  background: var(--surface);
+}
+
+.trip-city-check {
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: normal;
+}
+
+.trip-city-check:last-child {
+  border-bottom: none;
+}
+
+.trip-city-country {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .year-flight-stats {
@@ -1823,21 +1866,77 @@ button {
   }
 
   #sidebar {
+    position: relative;
     flex-direction: row;
     align-items: stretch;
     justify-content: space-around;
     gap: 0;
     padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
     border-right: none;
-    border-top: 1px solid var(--border);
+    border-top: none;
+    background: none;
     overflow: visible;
   }
 
+  /* The bar's actual fill/border lives on this pseudo-element instead of on
+     #sidebar itself, so a radial-gradient mask can cut a circular notch out
+     of just the bar strip without also clipping the Map button's badge,
+     which deliberately overflows #sidebar's own box to sit raised above it. */
+  #sidebar::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    -webkit-mask-image: radial-gradient(circle 30px at 50% 0px, transparent 99%, black 100%);
+    mask-image: radial-gradient(circle 30px at 50% 0px, transparent 99%, black 100%);
+  }
+
   .nav-item {
+    position: relative;
+    z-index: 1;
     flex: 1;
     padding: 6px 2px;
     font-size: 10.5px;
     border-radius: 10px;
+  }
+
+  /* Map is the app's main feature, so on the mobile bottom bar it gets the
+     center slot and a raised circular badge — the same "featured center tab"
+     treatment apps like grocery/loyalty apps use for their primary action,
+     always shown the same way regardless of which tab is currently active. */
+  #sidebar .nav-item[data-view="countries"] {
+    order: 1;
+  }
+  #sidebar .nav-item[data-view="timeline"] {
+    order: 2;
+  }
+  #sidebar .nav-item[data-view="map"] {
+    order: 3;
+  }
+  #sidebar .nav-item[data-view="flights"] {
+    order: 4;
+  }
+  #sidebar .nav-item[data-view="settings"] {
+    order: 5;
+  }
+
+  .nav-item[data-view="map"] .nav-icon {
+    width: 54px;
+    height: 54px;
+    margin-top: -22px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--teal);
+    box-shadow: 0 6px 14px rgba(24, 24, 20, 0.3);
+  }
+
+  .nav-item[data-view="map"] .nav-icon svg {
+    width: 26px;
+    height: 26px;
+    color: #fff;
   }
 
   #topbar h1 {

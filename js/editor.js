@@ -528,16 +528,32 @@ export function openCountryForm({ countries, visitedCodes }) {
 }
 
 /**
- * A simple name + date-range form for grouping a run of flights/cities into a
- * named trip. Membership isn't stored explicitly — any city visit or flight
- * whose date falls within the range counts as part of the trip.
- * @returns {Promise<{name: string, startDate: string, endDate: string}|null>}
+ * A name + optional date-range + place-checklist form for grouping a run of
+ * flights/cities into a named trip. Membership can come from either signal:
+ * an explicit city selection (for when the dates are long forgotten) or a
+ * date range (any visit/flight inside it counts) — either is enough on its own.
+ * @param {{trip?: object|null, cities: {id: string, name: string, country: string}[]}} args
+ * @returns {Promise<{name: string, startDate: string|null, endDate: string|null, cityIds: string[]}|null>}
  */
-export function openTripForm({ trip = null } = {}) {
+export function openTripForm({ trip = null, cities = [] } = {}) {
   return new Promise((resolve) => {
     currentCancel = () => resolve(null);
     showEditor(trip ? "Edit trip" : "Add trip");
     formEl.onsubmit = (e) => e.preventDefault();
+
+    const selectedIds = new Set(trip?.cityIds || []);
+    const cityListHtml = cities.length
+      ? cities
+          .map(
+            (c) => `
+        <label class="checkbox-label trip-city-check">
+          <input type="checkbox" value="${escapeHtml(c.id)}" ${selectedIds.has(c.id) ? "checked" : ""} />
+          ${escapeHtml(c.name)}<span class="trip-city-country">${escapeHtml(c.country)}</span>
+        </label>`
+          )
+          .join("")
+      : `<p class="form-hint">Add some cities first to select them here.</p>`;
+
     formEl.innerHTML = `
       <div class="form-row">
         <label for="f-trip-name">Name</label>
@@ -545,14 +561,17 @@ export function openTripForm({ trip = null } = {}) {
       </div>
       <div class="form-row-split">
         <div class="form-row">
-          <label for="f-trip-start">Start date</label>
+          <label for="f-trip-start">Start date <span class="form-optional">(optional)</span></label>
           <input type="date" id="f-trip-start" value="${trip?.startDate || ""}" />
         </div>
         <div class="form-row">
-          <label for="f-trip-end">End date</label>
+          <label for="f-trip-end">End date <span class="form-optional">(optional)</span></label>
           <input type="date" id="f-trip-end" value="${trip?.endDate || ""}" />
         </div>
       </div>
+      <p class="trip-city-heading">Places on this trip</p>
+      <p class="form-hint">Don't remember the exact dates? Just pick the cities instead.</p>
+      <div class="trip-city-checklist">${cityListHtml}</div>
       <p class="form-error" id="f-error" hidden></p>
       <div class="form-actions">
         <button type="button" class="btn-secondary" id="f-cancel">Cancel</button>
@@ -565,6 +584,7 @@ export function openTripForm({ trip = null } = {}) {
       const name = document.getElementById("f-trip-name").value.trim();
       const startDate = document.getElementById("f-trip-start").value;
       const endDate = document.getElementById("f-trip-end").value;
+      const cityIds = [...formEl.querySelectorAll(".trip-city-checklist input:checked")].map((el) => el.value);
       const errorEl = document.getElementById("f-error");
       errorEl.hidden = true;
 
@@ -573,20 +593,25 @@ export function openTripForm({ trip = null } = {}) {
         errorEl.hidden = false;
         return;
       }
-      if (!startDate || !endDate) {
-        errorEl.textContent = "Pick a start and end date.";
+      if ((startDate && !endDate) || (!startDate && endDate)) {
+        errorEl.textContent = "Pick both a start and end date, or leave both empty.";
         errorEl.hidden = false;
         return;
       }
-      if (endDate < startDate) {
+      if (startDate && endDate && endDate < startDate) {
         errorEl.textContent = "End date can't be before the start date.";
+        errorEl.hidden = false;
+        return;
+      }
+      if (!cityIds.length && !(startDate && endDate)) {
+        errorEl.textContent = "Select at least one place, or set a date range.";
         errorEl.hidden = false;
         return;
       }
 
       currentCancel = null;
       overlay.hidden = true;
-      resolve({ name, startDate, endDate });
+      resolve({ name, startDate: startDate || null, endDate: endDate || null, cityIds });
     });
   });
 }

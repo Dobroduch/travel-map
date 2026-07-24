@@ -720,31 +720,63 @@ function parseDateSafe(str) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-/** The trip (if any) whose date range contains this date string — ISO
- * YYYY-MM-DD strings compare lexicographically the same as chronologically,
- * so no Date parsing is needed. */
-function tripForDate(dateStr) {
-  if (!dateStr) return null;
-  return (data.trips || []).find((t) => dateStr >= t.startDate && dateStr <= t.endDate) || null;
+/** Whether a city belongs to a trip — either explicitly selected into it, or
+ * (for trips that still use a date range) having a visit date inside it. */
+function cityInTrip(trip, city) {
+  if ((trip.cityIds || []).includes(city.id)) return true;
+  if (trip.startDate && trip.endDate) {
+    return (city.dates || []).some((d) => d >= trip.startDate && d <= trip.endDate);
+  }
+  return false;
 }
 
-/** Aggregate counts for a trip card: distinct countries/cities with a visit
- * date in range, plus flights whose date falls in range. */
+/** Whether a flight belongs to a trip — either its departure or arrival city
+ * was explicitly selected into it, or its date falls in the trip's range. */
+function flightInTrip(trip, conn) {
+  const cityIds = trip.cityIds || [];
+  if (cityIds.includes(conn.from) || cityIds.includes(conn.to)) return true;
+  if (trip.startDate && trip.endDate && conn.date) {
+    return conn.date >= trip.startDate && conn.date <= trip.endDate;
+  }
+  return false;
+}
+
+function tripForCity(city) {
+  return (data.trips || []).find((t) => cityInTrip(t, city)) || null;
+}
+
+function tripForConnection(conn) {
+  return (data.trips || []).find((t) => flightInTrip(t, conn)) || null;
+}
+
+function tripDateRangeText(trip) {
+  return trip.startDate && trip.endDate ? `${formatDateDMY(trip.startDate)} – ${formatDateDMY(trip.endDate)}` : "No dates set";
+}
+
+/** Aggregate counts for a trip card: distinct countries/cities and flights
+ * that belong to the trip (by city selection or date range). */
 function computeTripStats(trip) {
   const countries = new Set();
   const cities = new Set();
   for (const city of visibleCities(data.cities)) {
-    if ((city.dates || []).some((d) => d >= trip.startDate && d <= trip.endDate)) {
+    if (cityInTrip(trip, city)) {
       countries.add(city.countryCode);
       cities.add(city.id);
     }
   }
-  const flightCount = data.connections.filter((c) => c.date && c.date >= trip.startDate && c.date <= trip.endDate).length;
+  const flightCount = data.connections.filter((c) => flightInTrip(trip, c)).length;
   return { countryCount: countries.size, cityCount: cities.size, flightCount };
 }
 
+function tripFormCities() {
+  return visibleCities(data.cities)
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((c) => ({ id: c.id, name: c.name, country: c.country }));
+}
+
 async function addTrip() {
-  const result = await openTripForm({});
+  const result = await openTripForm({ cities: tripFormCities() });
   if (!result) return;
   if (!data.trips) data.trips = [];
   const id = uniqueId(slugify(result.name), new Set(data.trips.map((t) => t.id)));
@@ -756,7 +788,7 @@ async function addTrip() {
 async function editTrip(id) {
   const trip = (data.trips || []).find((t) => t.id === id);
   if (!trip) return;
-  const result = await openTripForm({ trip });
+  const result = await openTripForm({ trip, cities: tripFormCities() });
   if (!result) return;
   Object.assign(trip, result);
   persistAndRefreshMap();
@@ -775,12 +807,10 @@ function openTripDetail(id) {
   const trip = (data.trips || []).find((t) => t.id === id);
   if (!trip) return;
 
-  const cities = visibleCities(data.cities).filter((c) =>
-    (c.dates || []).some((d) => d >= trip.startDate && d <= trip.endDate)
-  );
+  const cities = visibleCities(data.cities).filter((c) => cityInTrip(trip, c));
   const flights = data.connections
     .map((conn, i) => ({ conn, i }))
-    .filter(({ conn }) => conn.date && conn.date >= trip.startDate && conn.date <= trip.endDate);
+    .filter(({ conn }) => flightInTrip(trip, conn));
 
   const cityRows = cities
     .map((c) => `<div class="connection-row"><span class="connection-route">${escapeHtml(c.name)}</span><span class="connection-meta">${escapeHtml(c.country)}</span></div>`)
@@ -789,19 +819,19 @@ function openTripDetail(id) {
     .map(({ conn }) => {
       const fromName = resolveLegLabel(conn.from, conn.departureAirport, index.citiesById, airportsByCode);
       const toName = resolveLegLabel(conn.to, conn.arrivalAirport, index.citiesById, airportsByCode);
-      return `<div class="connection-row"><span class="connection-route">${escapeHtml(`${fromName} → ${toName}`)}</span><span class="connection-meta">${escapeHtml(formatDateDMY(conn.date))}</span></div>`;
+      return `<div class="connection-row"><span class="connection-route">${escapeHtml(`${fromName} → ${toName}`)}</span><span class="connection-meta">${escapeHtml(conn.date ? formatDateDMY(conn.date) : "No date")}</span></div>`;
     })
     .join("");
 
   const body = `
     ${cities.length ? `<div class="dialog-section"><h3>${icons.pin(14)}<span>Cities</span></h3>${cityRows}</div>` : ""}
     ${flights.length ? `<div class="dialog-section"><h3>${icons.plane(14)}<span>Flights</span></h3>${flightRows}</div>` : ""}
-    ${!cities.length && !flights.length ? `<p class="dialog-notes">No logged cities or flights fall within these dates yet.</p>` : ""}
+    ${!cities.length && !flights.length ? `<p class="dialog-notes">No logged cities or flights are part of this trip yet.</p>` : ""}
   `;
 
   openDialog({
     title: trip.name,
-    subtitle: `${formatDateDMY(trip.startDate)} – ${formatDateDMY(trip.endDate)}`,
+    subtitle: tripDateRangeText(trip),
     bodyHtml: body,
     onEdit: () => editTrip(id),
     onDelete: () => deleteTrip(id),
@@ -818,7 +848,7 @@ function renderTripsSection() {
           return `
         <button type="button" class="trip-card" data-id="${t.id}">
           <span class="trip-card-name">${escapeHtml(t.name)}</span>
-          <span class="trip-card-dates">${formatDateDMY(t.startDate)} – ${formatDateDMY(t.endDate)}</span>
+          <span class="trip-card-dates">${tripDateRangeText(t)}</span>
           <span class="trip-card-meta">${s.countryCount} ${s.countryCount === 1 ? "country" : "countries"} · ${s.cityCount} ${
             s.cityCount === 1 ? "city" : "cities"
           } · ${s.flightCount} ${s.flightCount === 1 ? "flight" : "flights"}</span>
@@ -898,7 +928,7 @@ function renderTimelinePage() {
   });
 
   const renderRow = (e) => {
-    const trip = tripForDate(e.dateStr);
+    const trip = tripForCity(e.city);
     return `
     <button type="button" class="entity-row" data-id="${e.city.id}">
       <span class="entity-name">${escapeHtml(e.city.name)}</span>
@@ -941,7 +971,7 @@ function renderFlightRowIcon(conn) {
 function renderFlightRow({ conn, i }) {
   const fromName = resolveLegLabel(conn.from, conn.departureAirport, index.citiesById, airportsByCode);
   const toName = resolveLegLabel(conn.to, conn.arrivalAirport, index.citiesById, airportsByCode);
-  const trip = tripForDate(conn.date);
+  const trip = tripForConnection(conn);
   return `
     <button type="button" class="entity-row" data-index="${i}">
       <span class="entity-name-with-icon">${renderFlightRowIcon(conn)}<span class="entity-name">${escapeHtml(`${fromName} → ${toName}`)}</span></span>
