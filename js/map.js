@@ -134,13 +134,9 @@ function connectionsToGeoJson(connections, citiesById, airportsByCode) {
         const from = resolveCoords(conn.from, conn.departureAirport, citiesById, airportsByCode);
         const to = resolveCoords(conn.to, conn.arrivalAirport, citiesById, airportsByCode);
         if (!from || !to) return null;
-        const via = conn.type === "layover" && conn.layoverAirport ? resolveCoords(null, conn.layoverAirport, citiesById, airportsByCode) : null;
-        const coordinates = via
-          ? [...buildArc([from.lng, from.lat], [via.lng, via.lat]), ...buildArc([via.lng, via.lat], [to.lng, to.lat]).slice(1)]
-          : buildArc([from.lng, from.lat], [to.lng, to.lat]);
         return {
           type: "Feature",
-          geometry: { type: "LineString", coordinates },
+          geometry: { type: "LineString", coordinates: buildArc([from.lng, from.lat], [to.lng, to.lat]) },
           properties: { index, from: conn.from, to: conn.to },
         };
       })
@@ -156,7 +152,6 @@ function connectionAirportPointsGeoJson(connections, citiesById, airportsByCode)
       [conn.from, conn.departureAirport],
       [conn.to, conn.arrivalAirport],
     ];
-    if (conn.type === "layover" && conn.layoverAirport) legs.push([null, conn.layoverAirport]);
     for (const [cityId, code] of legs) {
       if (!code) continue;
       const coords = resolveCoords(cityId, code, citiesById, airportsByCode);

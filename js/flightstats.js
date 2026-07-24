@@ -109,30 +109,13 @@ function resolveAircraftType(conn, regTypeMap) {
   return reg ? regTypeMap.get(reg) || null : null;
 }
 
-/** The ordered points a connection's itinerary actually passes through: departure,
- * an optional layover stop, then arrival — used so a connecting flight's distance
- * and time reflect both real legs instead of a single point-to-point line. */
-function resolveConnectionPoints(conn, citiesById, airportsByCode) {
-  const points = [resolveCoords(conn.from, conn.departureAirport, citiesById, airportsByCode)];
-  if (conn.type === "layover" && conn.layoverAirport) {
-    points.push(resolveCoords(null, conn.layoverAirport, citiesById, airportsByCode));
-  }
-  points.push(resolveCoords(conn.to, conn.arrivalAirport, citiesById, airportsByCode));
-  return points.filter(Boolean);
-}
-
-/** Total distance/time for a connection, summed leg by leg (each leg gets its own
- * takeoff/landing overhead via estimateFlightHours, not just one for the whole trip). */
+/** Distance/time for a connection, as a single direct point-to-point flight. */
 function computeConnectionDistanceHours(conn, citiesById, airportsByCode) {
-  const points = resolveConnectionPoints(conn, citiesById, airportsByCode);
-  let km = 0;
-  let hours = 0;
-  for (let i = 0; i < points.length - 1; i++) {
-    const legKm = haversineKm(points[i], points[i + 1]);
-    km += legKm;
-    hours += estimateFlightHours(legKm);
-  }
-  return { km, hours };
+  const from = resolveCoords(conn.from, conn.departureAirport, citiesById, airportsByCode);
+  const to = resolveCoords(conn.to, conn.arrivalAirport, citiesById, airportsByCode);
+  if (!from || !to) return { km: 0, hours: 0 };
+  const km = haversineKm(from, to);
+  return { km, hours: estimateFlightHours(km) };
 }
 
 export function computeFlightStats(connections, citiesById, airportsByCode) {
@@ -150,7 +133,6 @@ export function computeFlightStats(connections, citiesById, airportsByCode) {
     totalHours += hours;
     if (conn.departureAirport) airportSet.add(conn.departureAirport.toUpperCase());
     if (conn.arrivalAirport) airportSet.add(conn.arrivalAirport.toUpperCase());
-    if (conn.type === "layover" && conn.layoverAirport) airportSet.add(conn.layoverAirport.toUpperCase());
     const airlineKey = conn.airlineCode || conn.airline;
     if (airlineKey) airlineSet.add(airlineKey.toUpperCase());
     if (conn.seat) seatCount += 1;
@@ -215,7 +197,7 @@ export function computeSeatHeatmap(connections) {
 /**
  * Rich stats used by the Flights page's clickable tile breakdowns: per-flight
  * distance/duration, longest/shortest legs, per-airline and per-year totals,
- * yearly averages, and per-airport visit counts (each flight counts both its
+ * yearly averages, and per-airport flight counts (each flight counts both its
  * departure and arrival airport).
  */
 export function computeFlightBreakdown(connections, citiesById, airportsByCode) {
@@ -230,14 +212,12 @@ export function computeFlightBreakdown(connections, citiesById, airportsByCode) 
     const { km, hours } = computeConnectionDistanceHours(conn, citiesById, airportsByCode);
     const fromLabel = resolveLegLabel(conn.from, conn.departureAirport, citiesById, airportsByCode);
     const toLabel = resolveLegLabel(conn.to, conn.arrivalAirport, citiesById, airportsByCode);
-    const hasLayover = conn.type === "layover" && conn.layoverAirport;
-    const viaLabel = hasLayover ? resolveLegLabel(null, conn.layoverAirport, citiesById, airportsByCode) : null;
     const year = conn.date ? conn.date.slice(0, 4) : null;
     const airlineKey = conn.airlineCode || conn.airline || null;
     const airlineName = conn.airline || conn.airlineCode || null;
 
     perFlight.push({
-      label: viaLabel ? `${fromLabel} → ${viaLabel} → ${toLabel}` : `${fromLabel} → ${toLabel}`,
+      label: `${fromLabel} → ${toLabel}`,
       km,
       hours,
       date: conn.date || null,
@@ -264,9 +244,7 @@ export function computeFlightBreakdown(connections, citiesById, airportsByCode) 
       y.hours += hours;
     }
 
-    const visitedCodes = [conn.departureAirport, conn.arrivalAirport];
-    if (hasLayover) visitedCodes.push(conn.layoverAirport);
-    for (const code of visitedCodes) {
+    for (const code of [conn.departureAirport, conn.arrivalAirport]) {
       if (!code) continue;
       const upper = code.toUpperCase();
       if (!airportCounts.has(upper)) {

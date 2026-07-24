@@ -753,17 +753,6 @@ export function openFlightForm({
         <input type="text" id="f-flightnum" placeholder="e.g. LX 16" value="${escapeHtml(connection?.flightNumber || "")}" />
       </div>
       <div class="form-row">
-        <label for="f-type">Type</label>
-        <select id="f-type">
-          <option value="direct" ${(connection?.type || "direct") === "direct" ? "selected" : ""}>Direct</option>
-          <option value="layover" ${connection?.type === "layover" ? "selected" : ""}>Layover (1 stop)</option>
-        </select>
-      </div>
-      <div class="form-row" id="layover-airport-row" ${(connection?.type || "direct") === "direct" ? "hidden" : ""}>
-        <label>Layover airport <span class="form-optional">(optional — so the stopover counts as one visit, not two)</span></label>
-        <div id="layover-airport-combo"></div>
-      </div>
-      <div class="form-row">
         <label>Airline <span class="form-optional">(optional)</span></label>
         <div id="airline-combo"></div>
       </div>
@@ -805,17 +794,6 @@ export function openFlightForm({
       container: document.getElementById("to-airport-combo"),
       airports,
       initialValue: connection?.arrivalAirport || prefill?.arrivalAirport || "",
-    });
-    const layoverAirportInput = renderAirportCombo({
-      container: document.getElementById("layover-airport-combo"),
-      airports,
-      initialValue: connection?.layoverAirport || "",
-    });
-
-    const typeSelect = document.getElementById("f-type");
-    const layoverRow = document.getElementById("layover-airport-row");
-    typeSelect.addEventListener("change", () => {
-      layoverRow.hidden = typeSelect.value !== "layover";
     });
 
     const aircraftTypeInput = renderAircraftTypeCombo({
@@ -870,23 +848,6 @@ export function openFlightForm({
         return;
       }
 
-      const type = typeSelect.value;
-      let layoverAirport = "";
-      if (type === "layover" && layoverAirportInput.value.trim()) {
-        const layover = matchAirport(layoverAirportInput, airports);
-        if (!layover) {
-          errorEl.textContent = "That layover airport wasn't recognized — pick one from the suggestions, or leave it blank.";
-          errorEl.hidden = false;
-          return;
-        }
-        if (layover.code === fromAirport.code || layover.code === toAirport.code) {
-          errorEl.textContent = "The layover airport must be different from the departure and arrival airports.";
-          errorEl.hidden = false;
-          return;
-        }
-        layoverAirport = layover.code;
-      }
-
       const airlineName = airlineInput.value.trim();
       const airlineMatch = airlines.find((a) => a.name.toLowerCase() === airlineName.toLowerCase());
 
@@ -895,8 +856,6 @@ export function openFlightForm({
         to: matchCityId(toAirport, cities),
         date: document.getElementById("f-date").value,
         flightNumber: document.getElementById("f-flightnum").value.trim(),
-        type,
-        layoverAirport,
         airline: airlineName,
         airlineCode: airlineMatch ? airlineMatch.code : "",
         departureAirport: fromAirport.code,

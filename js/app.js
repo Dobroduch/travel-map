@@ -224,8 +224,6 @@ function openFlightDialog(connIndex) {
   if (!conn) return;
   const fromName = resolveLegLabel(conn.from, conn.departureAirport, index.citiesById, airportsByCode);
   const toName = resolveLegLabel(conn.to, conn.arrivalAirport, index.citiesById, airportsByCode);
-  const hasLayover = conn.type === "layover" && conn.layoverAirport;
-  const viaName = hasLayover ? resolveLegLabel(null, conn.layoverAirport, index.citiesById, airportsByCode) : null;
 
   const details = [];
   if (conn.airline) details.push({ label: "Airline", value: conn.airline });
@@ -235,7 +233,6 @@ function openFlightDialog(connIndex) {
       value: [conn.departureAirport, conn.departureTime].filter(Boolean).join(" · "),
     });
   }
-  if (hasLayover) details.push({ label: "Layover", value: conn.layoverAirport });
   if (conn.arrivalAirport || conn.arrivalTime) {
     details.push({
       label: "Arrival",
@@ -246,12 +243,9 @@ function openFlightDialog(connIndex) {
   if (aircraftParts.length) details.push({ label: "Aircraft", value: aircraftParts.join(" · ") });
   if (conn.seat) details.push({ label: "Seat", value: conn.seat });
 
-  let subtitle = "Direct flight";
-  if (conn.type === "layover") subtitle = hasLayover ? `1 stop via ${viaName}` : "1 stop (airport unknown)";
-
   openDialog({
-    title: hasLayover ? `${fromName} → ${viaName} → ${toName}` : `${fromName} → ${toName}`,
-    subtitle,
+    title: `${fromName} → ${toName}`,
+    subtitle: "Direct flight",
     iconUrl: conn.airlineCode ? airlineLogoUrl(conn.airlineCode) : null,
     iconAlt: conn.airline || conn.airlineCode || "",
     dates: conn.date ? [formatDateDMY(conn.date)] : [],
@@ -776,14 +770,9 @@ function renderFlightRowIcon(conn) {
 function renderFlightRow({ conn, i }) {
   const fromName = resolveLegLabel(conn.from, conn.departureAirport, index.citiesById, airportsByCode);
   const toName = resolveLegLabel(conn.to, conn.arrivalAirport, index.citiesById, airportsByCode);
-  const viaName =
-    conn.type === "layover" && conn.layoverAirport
-      ? resolveLegLabel(null, conn.layoverAirport, index.citiesById, airportsByCode)
-      : null;
-  const routeText = viaName ? `${fromName} → ${viaName} → ${toName}` : `${fromName} → ${toName}`;
   return `
     <button type="button" class="entity-row" data-index="${i}">
-      <span class="entity-name-with-icon">${renderFlightRowIcon(conn)}<span class="entity-name">${escapeHtml(routeText)}</span></span>
+      <span class="entity-name-with-icon">${renderFlightRowIcon(conn)}<span class="entity-name">${escapeHtml(`${fromName} → ${toName}`)}</span></span>
       <span class="entity-count">${escapeHtml(conn.date ? formatDateDMY(conn.date) : "No date")}${conn.flightNumber ? ` · ${escapeHtml(conn.flightNumber)}` : ""}</span>
     </button>`;
 }
@@ -1080,7 +1069,7 @@ function renderAirportRows(airports) {
       (a) =>
         `<div class="connection-row"><span class="connection-route">${escapeHtml(a.code)} — ${escapeHtml(
           a.name
-        )}</span><span class="connection-meta">${a.count} ${a.count === 1 ? "visit" : "visits"}</span></div>`
+        )}</span><span class="connection-meta">${a.count} ${a.count === 1 ? "flight" : "flights"}</span></div>`
     )
     .join("");
 }
@@ -1154,8 +1143,8 @@ function openFlightsBreakdown() {
 function openAirportsBreakdown() {
   const b = computeFlightBreakdown(data.connections, index.citiesById, airportsByCode);
   const body =
-    renderBreakdownSection("Most visited", renderAirportRows(b.mostVisitedAirport ? [b.mostVisitedAirport] : [])) +
-    renderBreakdownSection("Least visited", renderAirportRows(b.leastVisitedAirport ? [b.leastVisitedAirport] : [])) +
+    renderBreakdownSection("Most flights", renderAirportRows(b.mostVisitedAirport ? [b.mostVisitedAirport] : [])) +
+    renderBreakdownSection("Fewest flights", renderAirportRows(b.leastVisitedAirport ? [b.leastVisitedAirport] : [])) +
     renderBreakdownSection("All airports", renderAirportRows(b.airports));
   openDialog({ title: "Airports breakdown", bodyHtml: body });
 }
