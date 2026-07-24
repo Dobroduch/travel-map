@@ -1516,7 +1516,7 @@ async function startSync(config) {
     remote = await pullRemote();
   } catch (err) {
     syncConnected = false;
-    throw new Error("Couldn't reach Firestore — double-check the config and rules, then try again.");
+    throw new Error("Couldn't reach the sync server — check your connection and try again.");
   }
 
   if (remote && typeof remote.updatedAt === "number" && remote.updatedAt > (data.updatedAt || 0)) {
@@ -1532,6 +1532,7 @@ async function startSync(config) {
 
   watchRemote((remoteData) => applyRemoteData(remoteData));
 }
+
 
 function setupSync() {
   const errorEl = document.getElementById("sync-error");
@@ -1552,7 +1553,6 @@ function setupSync() {
 
   document.getElementById("btn-sync-connect").addEventListener("click", async () => {
     errorEl.hidden = true;
-    const configText = document.getElementById("sync-config-input").value.trim();
     const syncCode = document.getElementById("sync-code-input").value.trim();
 
     if (!syncCode) {
@@ -1560,19 +1560,7 @@ function setupSync() {
       return;
     }
 
-    let firebaseConfig;
-    try {
-      firebaseConfig = JSON.parse(configText);
-    } catch {
-      showError("That doesn't look like valid JSON — paste the whole firebaseConfig object as shown in your Firebase project settings.");
-      return;
-    }
-    if (!firebaseConfig.projectId || !firebaseConfig.apiKey) {
-      showError("That config is missing apiKey/projectId — make sure you copied the whole object.");
-      return;
-    }
-
-    const config = { firebaseConfig, syncCode };
+    const config = { syncCode };
     const btn = document.getElementById("btn-sync-connect");
     btn.disabled = true;
     btn.textContent = "Connecting…";
@@ -1581,7 +1569,7 @@ function setupSync() {
       saveSyncConfig(config);
       renderSyncConnectedState(config);
     } catch (err) {
-      showError(err.message || "Couldn't connect — check your config and Firestore rules.");
+      showError(err.message || "Couldn't connect — check your connection and try again.");
     } finally {
       btn.disabled = false;
       btn.textContent = "Connect & sync";

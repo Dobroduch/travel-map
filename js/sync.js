@@ -4,6 +4,19 @@ const FIRESTORE_SDK_URL = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VER
 const CONFIG_KEY = "travel-map-sync-config-v1";
 const COLLECTION = "travelMapSync";
 
+// This app's own Firebase project, shared by everyone who uses the app — safe
+// to ship publicly, since a Firebase client config isn't a secret; access is
+// controlled entirely by the Firestore security rule (scoped to a sync code),
+// not by hiding these values.
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAuwm-pJGOvjZkdtoLIqwGOYNCSGYJZCXY",
+  authDomain: "travel-map-6189f.firebaseapp.com",
+  projectId: "travel-map-6189f",
+  storageBucket: "travel-map-6189f.firebasestorage.app",
+  messagingSenderId: "373532667364",
+  appId: "1:373532667364:web:9a3a57cc7044eb3c1febf1",
+};
+
 let firestoreApi = null;
 let unsubscribe = null;
 
@@ -29,10 +42,10 @@ export function clearSyncConfig() {
  * so the app stays fully offline-capable otherwise) and opens a handle on the
  * one Firestore document this device's sync code points to.
  */
-export async function connect({ firebaseConfig, syncCode }) {
+export async function connect({ syncCode }) {
   const [{ initializeApp }, firestoreMod] = await Promise.all([import(APP_SDK_URL), import(FIRESTORE_SDK_URL)]);
   const { getFirestore, doc, getDoc, setDoc, onSnapshot } = firestoreMod;
-  const app = initializeApp(firebaseConfig);
+  const app = initializeApp(FIREBASE_CONFIG);
   const db = getFirestore(app);
   const ref = doc(db, COLLECTION, syncCode);
   firestoreApi = { getDoc, setDoc, onSnapshot, ref };

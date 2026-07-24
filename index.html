@@ -150,39 +150,12 @@
       <div class="settings-panel" id="sync-panel">
         <h2>Sync across devices</h2>
         <p class="settings-hint">
-          Connect a free Google Firebase project to keep this data in sync between your phone and desktop
-          automatically. Everything still works offline without this — it's entirely optional.
+          Pick a private code and enter the same one on every device to keep this data synced automatically.
+          Anyone who knows the code can read or write that data, so treat it like a password. Everything still
+          works offline without this — it's entirely optional.
         </p>
 
         <div id="sync-disconnected">
-          <details class="sync-help">
-            <summary>How to set this up (one-time, ~5 minutes)</summary>
-            <ol>
-              <li>Go to <strong>console.firebase.google.com</strong> and create a free project.</li>
-              <li>In the project, open <strong>Build → Firestore Database</strong> and click "Create database" (start in test mode is fine to begin with).</li>
-              <li>
-                In Firestore's <strong>Rules</strong> tab, paste this and publish it:
-                <pre class="sync-rules">rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /travelMapSync/{syncId} {
-      allow read, write: if true;
-    }
-  }
-}</pre>
-                This keeps setup simple by skipping sign-in — treat your sync code below like a password, since anyone with it could read or write this document.
-              </li>
-              <li>
-                Back in the project overview, click the <strong>&lt;/&gt; (web) icon</strong> to register a web app, then copy the
-                <code>firebaseConfig</code> object it shows you.
-              </li>
-              <li>Paste that config below, pick a sync code (any string only you know), and connect on both devices with the same code.</li>
-            </ol>
-          </details>
-          <div class="form-row">
-            <label for="sync-config-input">Firebase config (paste the whole object)</label>
-            <textarea id="sync-config-input" rows="5" placeholder='{"apiKey": "...", "projectId": "...", ...}'></textarea>
-          </div>
           <div class="form-row">
             <label for="sync-code-input">Sync code</label>
             <input id="sync-code-input" type="text" placeholder="e.g. a private phrase only you know" />
