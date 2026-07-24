@@ -33,7 +33,7 @@ export async function loadCountryCodes() {
  */
 export function countryFlagUrl(iso2) {
   if (!iso2 || iso2.length !== 2) return null;
-  return `https://flagcdn.com/w40/${iso2.toLowerCase()}.png`;
+  return `https://flagcdn.com/w160/${iso2.toLowerCase()}.png`;
 }
 
 export function getCountryList(countriesGeojson) {
