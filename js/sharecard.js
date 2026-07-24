@@ -159,7 +159,7 @@ function fitFontSize(ctx, text, maxWidth, maxSize, minSize, weight = 800) {
   let size = maxSize;
   ctx.font = `${weight} ${size}px ${FONT}`;
   while (size > minSize && ctx.measureText(text).width > maxWidth) {
-    size -= 4;
+    size -= 2;
     ctx.font = `${weight} ${size}px ${FONT}`;
   }
   return size;
@@ -169,18 +169,24 @@ function fitFontSize(ctx, text, maxWidth, maxSize, minSize, weight = 800) {
  * to fit), label small/muted/uppercase beneath. Returns the y position after
  * the last entry, so captions can follow it. */
 function drawStatList(ctx, entries, startY, rowGap) {
+  const labelMaxWidth = STORY_WIDTH - LEFT_MARGIN * 2;
   let y = startY;
   for (const { value, label } of entries) {
-    const size = fitFontSize(ctx, value, STAT_MAX_WIDTH, 148, 64);
+    // 32px floor (not the usual short-number range) so a long country or place
+    // name — "United States of America", "British Indian Ocean Territory" —
+    // still shrinks enough to fit rather than overflowing the box.
+    const size = fitFontSize(ctx, value, STAT_MAX_WIDTH, 148, 32);
     ctx.fillStyle = PALETTE.accent;
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
     ctx.font = `800 ${size}px ${FONT}`;
     ctx.fillText(value, LEFT_MARGIN, y);
 
+    const upperLabel = label.toUpperCase();
+    const labelSize = fitFontSize(ctx, upperLabel, labelMaxWidth, 32, 18, 600);
     ctx.fillStyle = PALETTE.muted;
-    ctx.font = `600 32px ${FONT}`;
-    ctx.fillText(label.toUpperCase(), LEFT_MARGIN, y + 44);
+    ctx.font = `600 ${labelSize}px ${FONT}`;
+    ctx.fillText(upperLabel, LEFT_MARGIN, y + 44);
 
     y += rowGap;
   }
@@ -227,8 +233,14 @@ export function drawShareCard(ctx, variant, stats) {
       { value: String(stats.countryCount), label: stats.countryCount === 1 ? "Country visited" : "Countries visited" },
       { value: String(stats.cityCount), label: stats.cityCount === 1 ? "City explored" : "Cities explored" },
     ];
-    startY = 980;
-    rowGap = 230;
+    if (stats.mostVisitedCountryName) {
+      entries.push({ value: stats.mostVisitedCountryName, label: "Most visited country" });
+    }
+    if (stats.furthestDistanceText) {
+      entries.push({ value: stats.furthestDistanceText, label: `Furthest — ${stats.furthestPlaceName}` });
+    }
+    startY = entries.length > 2 ? 760 : 980;
+    rowGap = entries.length > 2 ? 195 : 230;
     if (stats.homeBaseName) captions.push(`Home base: ${stats.homeBaseName}`);
   } else if (variant === "flights") {
     entries = [

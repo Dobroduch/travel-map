@@ -133,6 +133,20 @@
         <input id="import-file-input" type="file" accept="application/json" hidden />
       </div>
 
+      <div class="settings-panel" id="home-city-panel">
+        <h2>Home city</h2>
+        <p class="settings-hint">
+          Used as the starting point for the "furthest visited place" stat. Falls back to your home base
+          country if not set.
+        </p>
+        <div class="form-row">
+          <label for="home-city-select">Home city</label>
+          <select id="home-city-select">
+            <option value="">Not set — use home base country</option>
+          </select>
+        </div>
+      </div>
+
       <div class="settings-panel" id="sync-panel">
         <h2>Sync across devices</h2>
         <p class="settings-hint">

@@ -28,6 +28,7 @@ import {
   airlineLogoUrl,
   resolveLegName,
   resolveLegLabel,
+  haversineKm,
 } from "./flightstats.js";
 
 const HOME_BASE_LIMIT = 2;
@@ -629,6 +630,7 @@ function setupSidebar() {
       else if (view === "countries") renderCountriesPage();
       else if (view === "timeline") renderTimelinePage();
       else if (view === "flights") renderFlightsPage();
+      else if (view === "settings") renderHomeCityOptions();
     });
   });
 }
@@ -1266,13 +1268,81 @@ function setupSettings() {
   });
 }
 
+function renderHomeCityOptions() {
+  const select = document.getElementById("home-city-select");
+  const current = data.homeCityId || "";
+  const sorted = [...data.cities].sort((a, b) => a.name.localeCompare(b.name));
+  select.innerHTML =
+    `<option value="">Not set — use home base country</option>` +
+    sorted.map((c) => `<option value="${c.id}">${escapeHtml(c.name)} (${escapeHtml(c.country)})</option>`).join("");
+  select.value = sorted.some((c) => c.id === current) ? current : "";
+}
+
+function setupHomeCity() {
+  renderHomeCityOptions();
+  document.getElementById("home-city-select").addEventListener("change", (e) => {
+    data.homeCityId = e.target.value || null;
+    persistAndRefreshMap();
+  });
+}
+
 let shareVariant = "highlights";
+
+/** The non-home country you've logged the most visits to — a "visit" is one
+ * dated stay (a city with several trip dates counts several times), falling
+ * back to 1 for cities logged without specific dates. */
+function computeMostVisitedCountry() {
+  const homeBaseCodes = new Set(data.homeBaseCountries || []);
+  let best = null;
+  for (const code of data.visitedCountries) {
+    if (homeBaseCodes.has(code)) continue;
+    const cities = visibleCities(index.citiesByCountry.get(code) || []);
+    if (!cities.length) continue;
+    const visits = cities.reduce((sum, c) => sum + Math.max(1, (c.dates || []).length), 0);
+    if (!best || visits > best.visits) {
+      best = { code, visits, name: cities[0].country || countryNameForCode(code) };
+    }
+  }
+  return best;
+}
+
+/** Reference point for "furthest visited place": the chosen home city if set,
+ * else the average location of all cities in your home base countries. */
+function homeCoords() {
+  if (data.homeCityId) {
+    const city = index.citiesById.get(data.homeCityId);
+    if (city) return { lat: city.lat, lng: city.lng };
+  }
+  const homeCities = (data.homeBaseCountries || []).flatMap((code) => index.citiesByCountry.get(code) || []);
+  if (!homeCities.length) return null;
+  return {
+    lat: homeCities.reduce((s, c) => s + c.lat, 0) / homeCities.length,
+    lng: homeCities.reduce((s, c) => s + c.lng, 0) / homeCities.length,
+  };
+}
+
+/** The visited city furthest from home, excluding home base countries themselves
+ * (their internal distances aren't a meaningful "furthest travelled" figure). */
+function computeFurthestPlace() {
+  const home = homeCoords();
+  if (!home) return null;
+  const homeBaseCodes = new Set(data.homeBaseCountries || []);
+  let best = null;
+  for (const city of visibleCities(data.cities)) {
+    if (homeBaseCodes.has(city.countryCode) || city.id === data.homeCityId) continue;
+    const km = haversineKm(home, { lat: city.lat, lng: city.lng });
+    if (!best || km > best.km) best = { city, km };
+  }
+  return best;
+}
 
 function computeShareStats() {
   const stats = computeFlightStats(data.connections, index.citiesById, airportsByCode);
   const breakdown = computeFlightBreakdown(data.connections, index.citiesById, airportsByCode);
   const comparison = distanceComparison(stats.totalDistanceKm);
   const homeBaseCode = (data.homeBaseCountries || [])[0];
+  const mostVisitedCountry = computeMostVisitedCountry();
+  const furthest = computeFurthestPlace();
 
   return {
     countryCount: data.visitedCountries.length,
@@ -1283,6 +1353,9 @@ function computeShareStats() {
     comparisonText: comparison ? comparison.circumferenceText : null,
     topAirlineName: breakdown.mostUsedAirline ? breakdown.mostUsedAirline.name || breakdown.mostUsedAirline.code : null,
     homeBaseName: homeBaseCode ? countryNameForCode(homeBaseCode) : null,
+    mostVisitedCountryName: mostVisitedCountry ? mostVisitedCountry.name : null,
+    furthestPlaceName: furthest ? `${furthest.city.name}, ${furthest.city.country}` : null,
+    furthestDistanceText: furthest ? formatDistanceKm(furthest.km) : null,
   };
 }
 
@@ -1730,6 +1803,7 @@ async function main() {
   setupFab();
   updateOnboardingHint();
   setupSettings();
+  setupHomeCity();
   setupShare();
   setupSync();
   setupTheme();
