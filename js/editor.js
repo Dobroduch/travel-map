@@ -527,6 +527,70 @@ export function openCountryForm({ countries, visitedCodes }) {
   });
 }
 
+/**
+ * A simple name + date-range form for grouping a run of flights/cities into a
+ * named trip. Membership isn't stored explicitly — any city visit or flight
+ * whose date falls within the range counts as part of the trip.
+ * @returns {Promise<{name: string, startDate: string, endDate: string}|null>}
+ */
+export function openTripForm({ trip = null } = {}) {
+  return new Promise((resolve) => {
+    currentCancel = () => resolve(null);
+    showEditor(trip ? "Edit trip" : "Add trip");
+    formEl.onsubmit = (e) => e.preventDefault();
+    formEl.innerHTML = `
+      <div class="form-row">
+        <label for="f-trip-name">Name</label>
+        <input type="text" id="f-trip-name" placeholder="e.g. Japan 2024" value="${escapeHtml(trip?.name || "")}" />
+      </div>
+      <div class="form-row-split">
+        <div class="form-row">
+          <label for="f-trip-start">Start date</label>
+          <input type="date" id="f-trip-start" value="${trip?.startDate || ""}" />
+        </div>
+        <div class="form-row">
+          <label for="f-trip-end">End date</label>
+          <input type="date" id="f-trip-end" value="${trip?.endDate || ""}" />
+        </div>
+      </div>
+      <p class="form-error" id="f-error" hidden></p>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" id="f-cancel">Cancel</button>
+        <button type="button" class="btn-primary" id="f-save">${trip ? "Save" : "Add trip"}</button>
+      </div>
+    `;
+
+    document.getElementById("f-cancel").addEventListener("click", () => cancelEditor());
+    document.getElementById("f-save").addEventListener("click", () => {
+      const name = document.getElementById("f-trip-name").value.trim();
+      const startDate = document.getElementById("f-trip-start").value;
+      const endDate = document.getElementById("f-trip-end").value;
+      const errorEl = document.getElementById("f-error");
+      errorEl.hidden = true;
+
+      if (!name) {
+        errorEl.textContent = "Give the trip a name.";
+        errorEl.hidden = false;
+        return;
+      }
+      if (!startDate || !endDate) {
+        errorEl.textContent = "Pick a start and end date.";
+        errorEl.hidden = false;
+        return;
+      }
+      if (endDate < startDate) {
+        errorEl.textContent = "End date can't be before the start date.";
+        errorEl.hidden = false;
+        return;
+      }
+
+      currentCancel = null;
+      overlay.hidden = true;
+      resolve({ name, startDate, endDate });
+    });
+  });
+}
+
 function tokenize(str) {
   return foldDiacritics(str.toLowerCase())
     .split(/[^a-z0-9]+/)

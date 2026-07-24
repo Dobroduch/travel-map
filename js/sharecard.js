@@ -269,6 +269,19 @@ const VARIANT_TITLES = {
   countries: "My Countries",
 };
 
+const VARIANT_YEAR_SUFFIX = {
+  highlights: "",
+  flights: " Flights",
+  countries: " Countries",
+};
+
+/** "My Travels" normally, or "My 2026" / "My 2026 Flights" / "My 2026 Countries"
+ * when a share card is scoped to one year. */
+function buildTitle(variant, year) {
+  if (!year) return VARIANT_TITLES[variant] || VARIANT_TITLES.highlights;
+  return `My ${year}${VARIANT_YEAR_SUFFIX[variant] ?? ""}`;
+}
+
 /**
  * Draws one of three variants onto the given canvas 2D context:
  * - "flights": flights taken, distance, time in the air, plus fun comparison
@@ -292,7 +305,7 @@ export function drawShareCard(ctx, variant, stats, options = {}) {
     drawFlightSquiggle(ctx);
     drawPlaneIcon(ctx, STORY_WIDTH * 0.86, STORY_HEIGHT * 0.315, 46, -0.55, PALETTE.accent);
   }
-  drawHeader(ctx, VARIANT_TITLES[variant] || VARIANT_TITLES.highlights, withPhoto);
+  drawHeader(ctx, buildTitle(variant, stats.year), withPhoto);
 
   let entries;
   let startY;

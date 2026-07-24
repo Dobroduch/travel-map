@@ -7,11 +7,13 @@ import {
   countryFlagUrl,
   buildIndex,
   getCountryList,
+  slugify,
+  uniqueId,
 } from "./data.js";
 import { loadData, saveData, exportData, importData, deleteAllData } from "./storage.js";
 import { createMap } from "./map.js";
 import { initDialog, openDialog, closeDialog } from "./dialog.js";
-import { initEditor, openCityForm, openCountryForm, openFlightForm, openCountryEditor } from "./editor.js";
+import { initEditor, openCityForm, openCountryForm, openFlightForm, openCountryEditor, openTripForm } from "./editor.js";
 import { icons } from "./icons.js";
 import { escapeHtml, foldDiacritics, formatDateDMY } from "./util.js";
 import { searchPlaces } from "./geocode.js";
@@ -48,6 +50,7 @@ let mapHandle;
 let flightFilter = { year: "", airline: "" };
 let flightsListSort = "newest";
 let flightsListAirline = "";
+let yearChartMetric = "countries";
 let iso2ByIso3 = new Map();
 
 function hydrateIcons(root = document) {
@@ -82,15 +85,25 @@ let syncConnected = false;
 let syncPushTimer = null;
 let applyingRemoteSync = false;
 
+// The updatedAt value we know is currently sitting in Firestore, as of the last
+// successful push or pull. When a remote update arrives and this device's own
+// data has moved past that point, its edits are about to be silently
+// overwritten — that's the signal for the conflict warning in applyRemoteData.
+let lastSyncedAt = 0;
+
 /** Pushes to Firestore a little after the last edit rather than on every keystroke/save. */
 function schedulePushToSync() {
   if (!syncConnected || applyingRemoteSync) return;
   clearTimeout(syncPushTimer);
   syncPushTimer = setTimeout(() => {
-    pushRemote(data).catch(() => {
-      // offline, or the Firestore rules/config are wrong — the local save already
-      // succeeded, so nothing is lost; the next successful push catches it up
-    });
+    pushRemote(data)
+      .then((updatedAt) => {
+        lastSyncedAt = updatedAt;
+      })
+      .catch(() => {
+        // offline, or the Firestore rules/config are wrong — the local save already
+        // succeeded, so nothing is lost; the next successful push catches it up
+      });
   }, 1200);
 }
 
@@ -117,13 +130,19 @@ function rerenderCurrentView() {
 function applyRemoteData(remoteData) {
   if (!remoteData || typeof remoteData.updatedAt !== "number") return;
   if (remoteData.updatedAt <= (data.updatedAt || 0)) return;
+  const hadUnsyncedChanges = (data.updatedAt || 0) > lastSyncedAt;
   applyingRemoteSync = true;
   data = remoteData;
   backfillCityPopulations();
   persistAndRefreshMap();
   rerenderCurrentView();
   applyingRemoteSync = false;
-  showOfflineToast("Synced from your other device");
+  lastSyncedAt = data.updatedAt;
+  showOfflineToast(
+    hadUnsyncedChanges
+      ? "Your recent changes were overwritten by a newer sync from another device"
+      : "Synced from your other device"
+  );
 }
 
 function countryNameForCode(code) {
@@ -701,6 +720,132 @@ function parseDateSafe(str) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+/** The trip (if any) whose date range contains this date string — ISO
+ * YYYY-MM-DD strings compare lexicographically the same as chronologically,
+ * so no Date parsing is needed. */
+function tripForDate(dateStr) {
+  if (!dateStr) return null;
+  return (data.trips || []).find((t) => dateStr >= t.startDate && dateStr <= t.endDate) || null;
+}
+
+/** Aggregate counts for a trip card: distinct countries/cities with a visit
+ * date in range, plus flights whose date falls in range. */
+function computeTripStats(trip) {
+  const countries = new Set();
+  const cities = new Set();
+  for (const city of visibleCities(data.cities)) {
+    if ((city.dates || []).some((d) => d >= trip.startDate && d <= trip.endDate)) {
+      countries.add(city.countryCode);
+      cities.add(city.id);
+    }
+  }
+  const flightCount = data.connections.filter((c) => c.date && c.date >= trip.startDate && c.date <= trip.endDate).length;
+  return { countryCount: countries.size, cityCount: cities.size, flightCount };
+}
+
+async function addTrip() {
+  const result = await openTripForm({});
+  if (!result) return;
+  if (!data.trips) data.trips = [];
+  const id = uniqueId(slugify(result.name), new Set(data.trips.map((t) => t.id)));
+  data.trips.push({ id, ...result });
+  persistAndRefreshMap();
+  renderTimelinePage();
+}
+
+async function editTrip(id) {
+  const trip = (data.trips || []).find((t) => t.id === id);
+  if (!trip) return;
+  const result = await openTripForm({ trip });
+  if (!result) return;
+  Object.assign(trip, result);
+  persistAndRefreshMap();
+  renderTimelinePage();
+}
+
+function deleteTrip(id) {
+  if (!confirm("Delete this trip? Its cities and flights aren't affected — only the trip grouping is removed.")) return;
+  data.trips = (data.trips || []).filter((t) => t.id !== id);
+  closeDialog();
+  persistAndRefreshMap();
+  renderTimelinePage();
+}
+
+function openTripDetail(id) {
+  const trip = (data.trips || []).find((t) => t.id === id);
+  if (!trip) return;
+
+  const cities = visibleCities(data.cities).filter((c) =>
+    (c.dates || []).some((d) => d >= trip.startDate && d <= trip.endDate)
+  );
+  const flights = data.connections
+    .map((conn, i) => ({ conn, i }))
+    .filter(({ conn }) => conn.date && conn.date >= trip.startDate && conn.date <= trip.endDate);
+
+  const cityRows = cities
+    .map((c) => `<div class="connection-row"><span class="connection-route">${escapeHtml(c.name)}</span><span class="connection-meta">${escapeHtml(c.country)}</span></div>`)
+    .join("");
+  const flightRows = flights
+    .map(({ conn }) => {
+      const fromName = resolveLegLabel(conn.from, conn.departureAirport, index.citiesById, airportsByCode);
+      const toName = resolveLegLabel(conn.to, conn.arrivalAirport, index.citiesById, airportsByCode);
+      return `<div class="connection-row"><span class="connection-route">${escapeHtml(`${fromName} → ${toName}`)}</span><span class="connection-meta">${escapeHtml(formatDateDMY(conn.date))}</span></div>`;
+    })
+    .join("");
+
+  const body = `
+    ${cities.length ? `<div class="dialog-section"><h3>${icons.pin(14)}<span>Cities</span></h3>${cityRows}</div>` : ""}
+    ${flights.length ? `<div class="dialog-section"><h3>${icons.plane(14)}<span>Flights</span></h3>${flightRows}</div>` : ""}
+    ${!cities.length && !flights.length ? `<p class="dialog-notes">No logged cities or flights fall within these dates yet.</p>` : ""}
+  `;
+
+  openDialog({
+    title: trip.name,
+    subtitle: `${formatDateDMY(trip.startDate)} – ${formatDateDMY(trip.endDate)}`,
+    bodyHtml: body,
+    onEdit: () => editTrip(id),
+    onDelete: () => deleteTrip(id),
+  });
+}
+
+function renderTripsSection() {
+  const trips = [...(data.trips || [])].sort((a, b) => (b.startDate || "").localeCompare(a.startDate || ""));
+
+  const cardsHtml = trips.length
+    ? `<div class="trip-card-list">${trips
+        .map((t) => {
+          const s = computeTripStats(t);
+          return `
+        <button type="button" class="trip-card" data-id="${t.id}">
+          <span class="trip-card-name">${escapeHtml(t.name)}</span>
+          <span class="trip-card-dates">${formatDateDMY(t.startDate)} – ${formatDateDMY(t.endDate)}</span>
+          <span class="trip-card-meta">${s.countryCount} ${s.countryCount === 1 ? "country" : "countries"} · ${s.cityCount} ${
+            s.cityCount === 1 ? "city" : "cities"
+          } · ${s.flightCount} ${s.flightCount === 1 ? "flight" : "flights"}</span>
+        </button>`;
+        })
+        .join("")}</div>`
+    : `<p class="page-hint">No trips yet — group a run of flights and cities into a named trip like "Japan 2024".</p>`;
+
+  return `
+    <div class="trips-section">
+      <div class="page-header-row">
+        <h3>Trips</h3>
+        <button type="button" class="btn-link" id="trip-add-btn">+ Add trip</button>
+      </div>
+      ${cardsHtml}
+    </div>
+  `;
+}
+
+function wireTripsSection(container) {
+  const addBtn = container.querySelector("#trip-add-btn");
+  if (addBtn) addBtn.addEventListener("click", () => addTrip());
+  container.querySelectorAll(".trip-card").forEach((btn) => {
+    btn.addEventListener("click", () => openTripDetail(btn.dataset.id));
+  });
+}
+
 function renderTimelinePage() {
   const container = document.getElementById("view-timeline");
 
@@ -720,7 +865,8 @@ function renderTimelinePage() {
   }
 
   if (!entries.length) {
-    container.innerHTML = `<div class="page-panel"><h2>Timeline</h2><p class="page-hint">No visits recorded yet.</p></div>`;
+    container.innerHTML = `<div class="page-panel"><h2>Timeline</h2>${renderTripsSection()}<p class="page-hint">No visits recorded yet.</p></div>`;
+    wireTripsSection(container);
     return;
   }
 
@@ -751,13 +897,18 @@ function renderTimelinePage() {
     return a.name.localeCompare(b.name);
   });
 
-  const renderRow = (e) => `
+  const renderRow = (e) => {
+    const trip = tripForDate(e.dateStr);
+    return `
     <button type="button" class="entity-row" data-id="${e.city.id}">
       <span class="entity-name">${escapeHtml(e.city.name)}</span>
-      <span class="entity-count">${e.date ? escapeHtml(formatDateDMY(e.dateStr)) : "No date"}</span>
+      <span class="entity-count">${trip ? `<span class="trip-badge">${escapeHtml(trip.name)}</span>` : ""}${
+      e.date ? escapeHtml(formatDateDMY(e.dateStr)) : "No date"
+    }</span>
     </button>`;
+  };
 
-  let html = `<div class="page-panel"><h2>Timeline</h2>`;
+  let html = `<div class="page-panel"><h2>Timeline</h2>${renderTripsSection()}`;
 
   for (const c of countries) {
     const count = c.entries.length;
@@ -773,6 +924,7 @@ function renderTimelinePage() {
 
   html += `</div>`;
   container.innerHTML = html;
+  wireTripsSection(container);
 
   container.querySelectorAll(".entity-row").forEach((btn) => {
     btn.addEventListener("click", () => openCityDialog(btn.dataset.id));
@@ -789,10 +941,11 @@ function renderFlightRowIcon(conn) {
 function renderFlightRow({ conn, i }) {
   const fromName = resolveLegLabel(conn.from, conn.departureAirport, index.citiesById, airportsByCode);
   const toName = resolveLegLabel(conn.to, conn.arrivalAirport, index.citiesById, airportsByCode);
+  const trip = tripForDate(conn.date);
   return `
     <button type="button" class="entity-row" data-index="${i}">
       <span class="entity-name-with-icon">${renderFlightRowIcon(conn)}<span class="entity-name">${escapeHtml(`${fromName} → ${toName}`)}</span></span>
-      <span class="entity-count">${escapeHtml(conn.date ? formatDateDMY(conn.date) : "No date")}${conn.flightNumber ? ` · ${escapeHtml(conn.flightNumber)}` : ""}</span>
+      <span class="entity-count">${trip ? `<span class="trip-badge">${escapeHtml(trip.name)}</span>` : ""}${escapeHtml(conn.date ? formatDateDMY(conn.date) : "No date")}${conn.flightNumber ? ` · ${escapeHtml(conn.flightNumber)}` : ""}</span>
     </button>`;
 }
 
@@ -858,6 +1011,84 @@ function buildFlightsListHtml(rows, sortMode) {
   return html;
 }
 
+/** Per-year totals (countries/cities newly logged that year, flights, km) for
+ * the Year in review chart — reuses an already-computed flight breakdown so
+ * this doesn't redo the per-connection distance work. */
+function computeYearlyStats(breakdown) {
+  const years = new Set();
+  const countriesByYear = new Map();
+  const citiesByYear = new Map();
+  const flightsByYear = new Map();
+
+  for (const city of visibleCities(data.cities)) {
+    for (const dateStr of city.dates) {
+      const date = parseDateSafe(dateStr);
+      if (!date) continue;
+      const year = date.getFullYear();
+      years.add(year);
+      if (!countriesByYear.has(year)) countriesByYear.set(year, new Set());
+      countriesByYear.get(year).add(city.countryCode);
+      if (!citiesByYear.has(year)) citiesByYear.set(year, new Set());
+      citiesByYear.get(year).add(city.id);
+    }
+  }
+
+  for (const f of breakdown.perFlight) {
+    if (!f.year) continue;
+    const year = Number(f.year);
+    years.add(year);
+    if (!flightsByYear.has(year)) flightsByYear.set(year, { count: 0, km: 0 });
+    const agg = flightsByYear.get(year);
+    agg.count += 1;
+    agg.km += f.km;
+  }
+
+  return [...years]
+    .sort((a, b) => a - b)
+    .map((year) => ({
+      year,
+      countries: countriesByYear.get(year)?.size || 0,
+      cities: citiesByYear.get(year)?.size || 0,
+      flights: flightsByYear.get(year)?.count || 0,
+      km: Math.round(flightsByYear.get(year)?.km || 0),
+    }));
+}
+
+const YEAR_CHART_METRICS = {
+  countries: { label: "Countries", format: (v) => String(v) },
+  cities: { label: "Cities", format: (v) => String(v) },
+  flights: { label: "Flights", format: (v) => String(v) },
+  km: { label: "Distance", format: (v) => formatDistanceKm(v) },
+};
+
+function buildYearChartSvg(yearlyStats, metric) {
+  const width = 640;
+  const height = 200;
+  const paddingTop = 22;
+  const paddingBottom = 26;
+  const barGap = 10;
+  const n = yearlyStats.length;
+  const barWidth = Math.max(18, (width - barGap * (n + 1)) / n);
+  const maxVal = Math.max(1, ...yearlyStats.map((s) => s[metric]));
+  const chartHeight = height - paddingTop - paddingBottom;
+
+  const bars = yearlyStats
+    .map((s, i) => {
+      const val = s[metric];
+      const barHeight = (val / maxVal) * chartHeight;
+      const x = barGap + i * (barWidth + barGap);
+      const y = paddingTop + (chartHeight - barHeight);
+      return `
+        <rect x="${x}" y="${y}" width="${barWidth}" height="${Math.max(barHeight, 2)}" rx="4" class="year-chart-bar" />
+        <text x="${x + barWidth / 2}" y="${y - 6}" text-anchor="middle" class="year-chart-value">${escapeHtml(YEAR_CHART_METRICS[metric].format(val))}</text>
+        <text x="${x + barWidth / 2}" y="${height - 8}" text-anchor="middle" class="year-chart-year">${s.year}</text>
+      `;
+    })
+    .join("");
+
+  return `<svg viewBox="0 0 ${width} ${height}" class="year-chart-svg" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${YEAR_CHART_METRICS[metric].label} by year">${bars}</svg>`;
+}
+
 function renderFlightsPage() {
   const container = document.getElementById("view-flights");
 
@@ -901,6 +1132,23 @@ function renderFlightsPage() {
       return `<option value="${escapeHtml(key)}" ${key === flightsListAirline ? "selected" : ""}>${escapeHtml(a.name || a.code)}</option>`;
     })
     .join("");
+
+  const yearlyStats = computeYearlyStats(breakdown);
+  const yearChartHtml = yearlyStats.length
+    ? `
+      <div class="year-chart-section">
+        <h3>Year in review</h3>
+        <div class="year-chart-metric-picker" role="radiogroup">
+          ${Object.entries(YEAR_CHART_METRICS)
+            .map(
+              ([key, m]) =>
+                `<button type="button" class="year-chart-metric-btn${key === yearChartMetric ? " active" : ""}" data-metric="${key}">${m.label}</button>`
+            )
+            .join("")}
+        </div>
+        <div class="year-chart-wrap" id="year-chart-wrap"></div>
+      </div>`
+    : "";
 
   container.innerHTML = `
     <div class="page-panel">
@@ -947,6 +1195,7 @@ function renderFlightsPage() {
             </p>`
           : ""
       }
+      ${yearChartHtml}
       <div class="flights-controls">
         <div class="form-row">
           <label for="flights-sort">Sort</label>
@@ -982,6 +1231,20 @@ function renderFlightsPage() {
     flightsListAirline = e.target.value;
     renderFlightsPage();
   });
+
+  const yearChartWrap = document.getElementById("year-chart-wrap");
+  if (yearChartWrap) {
+    const metricBtns = [...container.querySelectorAll(".year-chart-metric-btn")];
+    yearChartWrap.innerHTML = buildYearChartSvg(yearlyStats, yearChartMetric);
+    metricBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        metricBtns.forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        yearChartMetric = btn.dataset.metric;
+        yearChartWrap.innerHTML = buildYearChartSvg(yearlyStats, yearChartMetric);
+      });
+    });
+  }
 
   container.querySelectorAll(".entity-row").forEach((btn) => {
     btn.addEventListener("click", () => openFlightDialog(Number(btn.dataset.index)));
@@ -1306,15 +1569,25 @@ let shareVariant = "highlights";
 
 /** The non-home country you've logged the most visits to — a "visit" is one
  * dated stay (a city with several trip dates counts several times), falling
- * back to 1 for cities logged without specific dates. */
-function computeMostVisitedCountry() {
+ * back to 1 for cities logged without specific dates. When `year` is given,
+ * only dates in that year count (cities with no date in that year are
+ * excluded, rather than falling back to the "counts as 1" lifetime rule). */
+function computeMostVisitedCountry(year) {
   const homeBaseCodes = new Set(data.homeBaseCountries || []);
   let best = null;
   for (const code of data.visitedCountries) {
     if (homeBaseCodes.has(code)) continue;
     const cities = visibleCities(index.citiesByCountry.get(code) || []);
     if (!cities.length) continue;
-    const visits = cities.reduce((sum, c) => sum + Math.max(1, (c.dates || []).length), 0);
+    let visits = 0;
+    for (const c of cities) {
+      if (year) {
+        visits += (c.dates || []).filter((d) => d.slice(0, 4) === String(year)).length;
+      } else {
+        visits += Math.max(1, (c.dates || []).length);
+      }
+    }
+    if (!visits) continue;
     if (!best || visits > best.visits) {
       best = { code, visits, name: cities[0].country || countryNameForCode(code) };
     }
@@ -1338,31 +1611,73 @@ function homeCoords() {
 }
 
 /** The visited city furthest from home, excluding home base countries themselves
- * (their internal distances aren't a meaningful "furthest travelled" figure). */
-function computeFurthestPlace() {
+ * (their internal distances aren't a meaningful "furthest travelled" figure).
+ * When `year` is given, only cities with a visit date in that year are candidates. */
+function computeFurthestPlace(year) {
   const home = homeCoords();
   if (!home) return null;
   const homeBaseCodes = new Set(data.homeBaseCountries || []);
   let best = null;
   for (const city of visibleCities(data.cities)) {
     if (homeBaseCodes.has(city.countryCode) || city.id === data.homeCityId) continue;
+    if (year && !(city.dates || []).some((d) => d.slice(0, 4) === String(year))) continue;
     const km = haversineKm(home, { lat: city.lat, lng: city.lng });
     if (!best || km > best.km) best = { city, km };
   }
   return best;
 }
 
-function computeShareStats() {
-  const stats = computeFlightStats(data.connections, index.citiesById, airportsByCode);
-  const breakdown = computeFlightBreakdown(data.connections, index.citiesById, airportsByCode);
+/** Every year with at least one dated visit or flight, newest first — the
+ * options offered by the share dialog's year selector. */
+function getAvailableShareYears() {
+  const years = new Set();
+  for (const city of data.cities) {
+    for (const dateStr of city.dates) {
+      const year = Number((dateStr || "").slice(0, 4));
+      if (year) years.add(year);
+    }
+  }
+  for (const conn of data.connections) {
+    const year = Number((conn.date || "").slice(0, 4));
+    if (year) years.add(year);
+  }
+  return [...years].sort((a, b) => b - a);
+}
+
+/** Builds the stats fed into the share card. When `year` is set (a string or
+ * number, e.g. "2026"), every figure is scoped to that year only instead of
+ * lifetime totals. */
+function computeShareStats(year) {
+  const connections = year ? data.connections.filter((c) => c.date && c.date.slice(0, 4) === String(year)) : data.connections;
+  const stats = computeFlightStats(connections, index.citiesById, airportsByCode);
+  const breakdown = computeFlightBreakdown(connections, index.citiesById, airportsByCode);
   const comparison = distanceComparison(stats.totalDistanceKm);
   const homeBaseCode = (data.homeBaseCountries || [])[0];
-  const mostVisitedCountry = computeMostVisitedCountry();
-  const furthest = computeFurthestPlace();
+  const mostVisitedCountry = computeMostVisitedCountry(year);
+  const furthest = computeFurthestPlace(year);
+
+  let countryCount;
+  let cityCount;
+  if (year) {
+    const countries = new Set();
+    const cities = new Set();
+    for (const city of visibleCities(data.cities)) {
+      if ((city.dates || []).some((d) => d.slice(0, 4) === String(year))) {
+        countries.add(city.countryCode);
+        cities.add(city.id);
+      }
+    }
+    countryCount = countries.size;
+    cityCount = cities.size;
+  } else {
+    countryCount = data.visitedCountries.length;
+    cityCount = visibleCities(data.cities).length;
+  }
 
   return {
-    countryCount: data.visitedCountries.length,
-    cityCount: visibleCities(data.cities).length,
+    year: year || null,
+    countryCount,
+    cityCount,
     flightCount: stats.flightCount,
     distanceText: formatDistanceKm(stats.totalDistanceKm),
     durationText: formatDuration(stats.totalHours),
@@ -1377,12 +1692,13 @@ function computeShareStats() {
 
 let sharePhotoEnabled = false;
 let sharePhotoImage = null;
+let shareYear = "";
 
 function refreshShareCard() {
   const canvas = document.getElementById("share-canvas");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
-  drawShareCard(ctx, shareVariant, computeShareStats(), { withPhoto: sharePhotoEnabled, photoImage: sharePhotoImage });
+  drawShareCard(ctx, shareVariant, computeShareStats(shareYear), { withPhoto: sharePhotoEnabled, photoImage: sharePhotoImage });
 }
 
 const SHARE_DIALOG_BODY = `
@@ -1390,6 +1706,13 @@ const SHARE_DIALOG_BODY = `
     <button type="button" class="share-variant-btn active" data-variant="highlights">Highlights</button>
     <button type="button" class="share-variant-btn" data-variant="flights">Flights</button>
     <button type="button" class="share-variant-btn" data-variant="countries">Countries</button>
+  </div>
+
+  <div class="form-row share-year-row">
+    <label for="share-year-select">Year</label>
+    <select id="share-year-select">
+      <option value="">All time</option>
+    </select>
   </div>
 
   <label class="checkbox-label">
@@ -1416,6 +1739,7 @@ function openShareDialog() {
   shareVariant = "highlights";
   sharePhotoEnabled = false;
   sharePhotoImage = null;
+  shareYear = "";
   openDialog({
     title: "Share your stats",
     subtitle: "Generate an Instagram Story-sized image of your travel stats to share.",
@@ -1431,6 +1755,18 @@ function openShareDialog() {
       shareVariant = btn.dataset.variant;
       refreshShareCard();
     });
+  });
+
+  const yearSelect = document.getElementById("share-year-select");
+  for (const year of getAvailableShareYears()) {
+    const opt = document.createElement("option");
+    opt.value = String(year);
+    opt.textContent = String(year);
+    yearSelect.appendChild(opt);
+  }
+  yearSelect.addEventListener("change", (e) => {
+    shareYear = e.target.value;
+    refreshShareCard();
   });
 
   const photoControls = document.getElementById("share-photo-controls");
@@ -1467,7 +1803,7 @@ function openShareDialog() {
     const canvas = document.getElementById("share-canvas");
     canvas.toBlob(async (blob) => {
       if (!blob) return;
-      const result = await shareOrDownloadImage(blob, `travel-map-${shareVariant}.png`);
+      const result = await shareOrDownloadImage(blob, `travel-map-${shareVariant}${shareYear ? `-${shareYear}` : ""}.png`);
       if (result === "downloaded") showOfflineToast("Image downloaded");
     }, "image/png");
   });
@@ -1479,7 +1815,7 @@ function openShareDialog() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `travel-map-${shareVariant}.png`;
+      a.download = `travel-map-${shareVariant}${shareYear ? `-${shareYear}` : ""}.png`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -1520,14 +1856,9 @@ async function startSync(config) {
   }
 
   if (remote && typeof remote.updatedAt === "number" && remote.updatedAt > (data.updatedAt || 0)) {
-    applyingRemoteSync = true;
-    data = remote;
-    backfillCityPopulations();
-    persistAndRefreshMap();
-    rerenderCurrentView();
-    applyingRemoteSync = false;
+    applyRemoteData(remote);
   } else {
-    await pushRemote(data);
+    lastSyncedAt = await pushRemote(data);
   }
 
   watchRemote((remoteData) => applyRemoteData(remoteData));
@@ -1584,7 +1915,7 @@ function setupSync() {
       if (remote && typeof remote.updatedAt === "number" && remote.updatedAt > (data.updatedAt || 0)) {
         applyRemoteData(remote);
       } else {
-        await pushRemote(data);
+        lastSyncedAt = await pushRemote(data);
         showOfflineToast("Synced");
       }
     } catch {

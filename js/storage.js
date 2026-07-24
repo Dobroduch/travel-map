@@ -1,7 +1,7 @@
 const STORAGE_KEY = "travel-map-data-v1";
 
 function emptyData() {
-  return { visitedCountries: [], homeBaseCountries: [], homeCityId: null, cities: [], connections: [] };
+  return { visitedCountries: [], homeBaseCountries: [], homeCityId: null, cities: [], connections: [], trips: [] };
 }
 
 export async function loadData() {
@@ -54,7 +54,7 @@ export async function importData(file) {
 }
 
 export function deleteAllData() {
-  const empty = { visitedCountries: [], homeBaseCountries: [], homeCityId: null, cities: [], connections: [] };
+  const empty = { visitedCountries: [], homeBaseCountries: [], homeCityId: null, cities: [], connections: [], trips: [] };
   saveData(empty);
   return empty;
 }

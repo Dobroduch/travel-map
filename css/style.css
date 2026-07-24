@@ -431,6 +431,69 @@ button {
   padding: 0 16px 16px;
 }
 
+.trips-section {
+  margin-bottom: 22px;
+}
+
+.trips-section .page-header-row {
+  margin-bottom: 10px;
+}
+
+.trips-section .page-header-row h3 {
+  margin: 0;
+}
+
+.trip-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trip-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+}
+
+.trip-card:hover {
+  border-color: var(--accent);
+}
+
+.trip-card-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.trip-card-dates {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.trip-card-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.trip-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  margin-right: 6px;
+  border-radius: 6px;
+  background: rgba(201, 98, 42, 0.14);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
 .year-flight-stats {
   color: var(--muted);
   font-weight: 500;
@@ -522,6 +585,71 @@ button {
   color: var(--muted);
   cursor: default;
   text-decoration: none;
+}
+
+.year-chart-section {
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.year-chart-section h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.year-chart-metric-picker {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.year-chart-metric-btn {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.year-chart-metric-btn:hover {
+  border-color: var(--accent);
+}
+
+.year-chart-metric-btn.active {
+  border-color: var(--accent);
+  background: rgba(201, 98, 42, 0.12);
+  color: var(--accent);
+}
+
+.year-chart-wrap {
+  width: 100%;
+}
+
+.year-chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.year-chart-bar {
+  fill: var(--accent);
+}
+
+.year-chart-value {
+  font-size: 11px;
+  fill: var(--ink);
+  font-weight: 600;
+}
+
+.year-chart-year {
+  font-size: 11px;
+  fill: var(--muted);
 }
 
 .flights-controls {
