@@ -367,20 +367,68 @@ button {
   color: var(--accent);
 }
 
-.timeline-year {
-  margin-bottom: 22px;
+.timeline-country {
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
 }
 
-.timeline-year:last-child {
+.timeline-country:last-child {
   margin-bottom: 0;
 }
 
-.timeline-year h3 {
-  margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--accent);
-  letter-spacing: 0.02em;
+.timeline-country[open] {
+  background: transparent;
+}
+
+.timeline-country-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.timeline-country-summary::-webkit-details-marker {
+  display: none;
+}
+
+.timeline-country-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.timeline-country-meta::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.timeline-country[open] .timeline-country-meta::after {
+  transform: rotate(-135deg);
+}
+
+.timeline-country-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timeline-country .entity-list {
+  padding: 0 16px 16px;
 }
 
 .year-flight-stats {

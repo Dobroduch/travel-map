@@ -724,35 +724,51 @@ function renderTimelinePage() {
     return;
   }
 
-  const dated = entries.filter((e) => e.date).sort((a, b) => a.date - b.date);
-  const undated = entries.filter((e) => !e.date);
-
-  const groups = new Map();
-  for (const e of dated) {
-    const year = e.date.getFullYear();
-    if (!groups.has(year)) groups.set(year, []);
-    groups.get(year).push(e);
+  const byCountry = new Map();
+  for (const e of entries) {
+    const code = e.city.countryCode;
+    if (!byCountry.has(code)) byCountry.set(code, { code, name: e.city.country, entries: [] });
+    byCountry.get(code).entries.push(e);
   }
+
+  const countries = [...byCountry.values()];
+  for (const c of countries) {
+    c.entries.sort((a, b) => {
+      if (a.date && b.date) return a.date - b.date;
+      if (a.date) return -1;
+      if (b.date) return 1;
+      return 0;
+    });
+    c.mostRecent = c.entries.reduce((max, e) => (e.date && (!max || e.date > max) ? e.date : max), null);
+  }
+
+  // Most recently visited country first, so the collapsed list still reads
+  // like a timeline; countries with no dated visits sort alphabetically at the end.
+  countries.sort((a, b) => {
+    if (a.mostRecent && b.mostRecent) return b.mostRecent - a.mostRecent;
+    if (a.mostRecent) return -1;
+    if (b.mostRecent) return 1;
+    return a.name.localeCompare(b.name);
+  });
 
   const renderRow = (e) => `
     <button type="button" class="entity-row" data-id="${e.city.id}">
       <span class="entity-name">${escapeHtml(e.city.name)}</span>
-      <span class="entity-count">${escapeHtml(formatDateDMY(e.dateStr))}</span>
+      <span class="entity-count">${e.date ? escapeHtml(formatDateDMY(e.dateStr)) : "No date"}</span>
     </button>`;
 
   let html = `<div class="page-panel"><h2>Timeline</h2>`;
 
-  for (const year of [...groups.keys()].sort((a, b) => a - b)) {
-    html += `<div class="timeline-year"><h3>${year}</h3><div class="entity-list">${groups
-      .get(year)
-      .map(renderRow)
-      .join("")}</div></div>`;
-  }
-
-  if (undated.length) {
-    html += `<div class="timeline-year"><h3>Undated</h3><div class="entity-list">${undated
-      .map(renderRow)
-      .join("")}</div></div>`;
+  for (const c of countries) {
+    const count = c.entries.length;
+    html += `
+      <details class="timeline-country">
+        <summary class="timeline-country-summary">
+          <span class="timeline-country-name">${renderCountryFlag(c.code)}${escapeHtml(c.name)}</span>
+          <span class="timeline-country-meta"><span class="entity-count">${count} ${count === 1 ? "visit" : "visits"}</span></span>
+        </summary>
+        <div class="entity-list">${c.entries.map(renderRow).join("")}</div>
+      </details>`;
   }
 
   html += `</div>`;
