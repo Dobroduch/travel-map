@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v48";
+const CACHE_VERSION = "v51";
 const APP_CACHE = `travel-map-app-${CACHE_VERSION}`;
 const TILE_CACHE = `travel-map-tiles-${CACHE_VERSION}`;
 
@@ -19,6 +19,7 @@ const APP_SHELL = [
   "./js/flightstats.js",
   "./js/aircraftlookup.js",
   "./js/sync.js",
+  "./js/sharecard.js",
   "./data/countries.geojson",
   "./data/cities.json",
   "./data/country-codes.json",

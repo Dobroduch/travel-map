@@ -17,6 +17,7 @@ import { escapeHtml, foldDiacritics, formatDateDMY } from "./util.js";
 import { searchPlaces } from "./geocode.js";
 import { lookupAircraftType } from "./aircraftlookup.js";
 import { getSyncConfig, saveSyncConfig, connect as connectSync, pullRemote, pushRemote, watchRemote, disconnect as disconnectSync } from "./sync.js";
+import { drawShareCard, shareOrDownloadImage, ensureHeaderFont } from "./sharecard.js";
 import {
   computeFlightStats,
   computeFlightBreakdown,
@@ -1265,6 +1266,101 @@ function setupSettings() {
   });
 }
 
+let shareVariant = "highlights";
+
+function computeShareStats() {
+  const stats = computeFlightStats(data.connections, index.citiesById, airportsByCode);
+  const breakdown = computeFlightBreakdown(data.connections, index.citiesById, airportsByCode);
+  const comparison = distanceComparison(stats.totalDistanceKm);
+  const homeBaseCode = (data.homeBaseCountries || [])[0];
+
+  return {
+    countryCount: data.visitedCountries.length,
+    cityCount: visibleCities(data.cities).length,
+    flightCount: stats.flightCount,
+    distanceText: formatDistanceKm(stats.totalDistanceKm),
+    durationText: formatDuration(stats.totalHours),
+    comparisonText: comparison ? comparison.circumferenceText : null,
+    topAirlineName: breakdown.mostUsedAirline ? breakdown.mostUsedAirline.name || breakdown.mostUsedAirline.code : null,
+    homeBaseName: homeBaseCode ? countryNameForCode(homeBaseCode) : null,
+  };
+}
+
+function refreshShareCard() {
+  const canvas = document.getElementById("share-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  drawShareCard(ctx, shareVariant, computeShareStats());
+}
+
+const SHARE_DIALOG_BODY = `
+  <div class="share-variant-picker" role="radiogroup">
+    <button type="button" class="share-variant-btn active" data-variant="highlights">Highlights</button>
+    <button type="button" class="share-variant-btn" data-variant="flights">Flights</button>
+    <button type="button" class="share-variant-btn" data-variant="countries">Countries</button>
+  </div>
+
+  <div class="share-preview-wrap">
+    <canvas id="share-canvas" class="share-preview-canvas" width="1080" height="1920"></canvas>
+  </div>
+
+  <div class="settings-actions">
+    <button id="btn-share-image" type="button"><span data-icon="upload"></span>Share</button>
+    <button id="btn-download-image" type="button"><span data-icon="download"></span>Download image</button>
+  </div>
+`;
+
+function openShareDialog() {
+  shareVariant = "highlights";
+  openDialog({
+    title: "Share your stats",
+    subtitle: "Generate an Instagram Story-sized image of your travel stats to share.",
+    bodyHtml: SHARE_DIALOG_BODY,
+  });
+  hydrateIcons(document.getElementById("dialog-body"));
+
+  const variantBtns = [...document.querySelectorAll(".share-variant-btn")];
+  variantBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      variantBtns.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      shareVariant = btn.dataset.variant;
+      refreshShareCard();
+    });
+  });
+
+  document.getElementById("btn-share-image").addEventListener("click", async () => {
+    const canvas = document.getElementById("share-canvas");
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      const result = await shareOrDownloadImage(blob, `travel-map-${shareVariant}.png`);
+      if (result === "downloaded") showOfflineToast("Image downloaded");
+    }, "image/png");
+  });
+
+  document.getElementById("btn-download-image").addEventListener("click", () => {
+    const canvas = document.getElementById("share-canvas");
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `travel-map-${shareVariant}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  });
+
+  refreshShareCard();
+  ensureHeaderFont().then(refreshShareCard);
+}
+
+function setupShare() {
+  document.getElementById("share-stats-btn").addEventListener("click", openShareDialog);
+}
+
 function renderSyncConnectedState(config) {
   document.getElementById("sync-disconnected").hidden = true;
   const connectedEl = document.getElementById("sync-connected");
@@ -1634,6 +1730,7 @@ async function main() {
   setupFab();
   updateOnboardingHint();
   setupSettings();
+  setupShare();
   setupSync();
   setupTheme();
   setupRoutesToggle();

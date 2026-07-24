@@ -24,6 +24,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Travel Map" />
 
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800&display=swap" rel="stylesheet" />
+
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -36,6 +40,9 @@
         <input id="search-input" type="search" placeholder="Search any city..." autocomplete="off" />
         <div id="search-results" class="search-results" hidden></div>
       </div>
+      <button id="share-stats-btn" class="topbar-btn" type="button" aria-label="Share your stats">
+        <span data-icon="upload"></span>
+      </button>
       <button id="theme-toggle" class="topbar-btn" type="button" aria-label="Toggle dark mode"></button>
     </header>
 

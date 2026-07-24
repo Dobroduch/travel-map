@@ -722,6 +722,50 @@ button {
   color: var(--danger);
 }
 
+.share-variant-picker {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 18px;
+}
+
+.share-variant-btn {
+  flex: 1;
+  padding: 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.share-variant-btn:hover {
+  border-color: var(--accent);
+}
+
+.share-variant-btn.active {
+  border-color: var(--accent);
+  background: rgba(201, 98, 42, 0.12);
+  color: var(--accent);
+}
+
+.share-preview-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+
+.share-preview-canvas {
+  width: 100%;
+  max-width: 240px;
+  height: auto;
+  aspect-ratio: 9 / 16;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
 .sync-help {
   margin-bottom: 18px;
   border: 1px solid var(--border);
