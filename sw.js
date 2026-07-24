@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v53";
+const CACHE_VERSION = "v54";
 const APP_CACHE = `travel-map-app-${CACHE_VERSION}`;
 const TILE_CACHE = `travel-map-tiles-${CACHE_VERSION}`;
 

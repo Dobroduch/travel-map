@@ -1375,11 +1375,14 @@ function computeShareStats() {
   };
 }
 
+let sharePhotoEnabled = false;
+let sharePhotoImage = null;
+
 function refreshShareCard() {
   const canvas = document.getElementById("share-canvas");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
-  drawShareCard(ctx, shareVariant, computeShareStats());
+  drawShareCard(ctx, shareVariant, computeShareStats(), { withPhoto: sharePhotoEnabled, photoImage: sharePhotoImage });
 }
 
 const SHARE_DIALOG_BODY = `
@@ -1387,6 +1390,16 @@ const SHARE_DIALOG_BODY = `
     <button type="button" class="share-variant-btn active" data-variant="highlights">Highlights</button>
     <button type="button" class="share-variant-btn" data-variant="flights">Flights</button>
     <button type="button" class="share-variant-btn" data-variant="countries">Countries</button>
+  </div>
+
+  <label class="checkbox-label">
+    <input type="checkbox" id="share-photo-toggle" />
+    Add your own photo
+  </label>
+  <div id="share-photo-controls" class="share-photo-controls" hidden>
+    <input type="file" id="share-photo-input" accept="image/*" hidden />
+    <button type="button" id="share-photo-pick-btn" class="link-btn">Choose photo…</button>
+    <span id="share-photo-filename" class="settings-hint"></span>
   </div>
 
   <div class="share-preview-wrap">
@@ -1401,6 +1414,8 @@ const SHARE_DIALOG_BODY = `
 
 function openShareDialog() {
   shareVariant = "highlights";
+  sharePhotoEnabled = false;
+  sharePhotoImage = null;
   openDialog({
     title: "Share your stats",
     subtitle: "Generate an Instagram Story-sized image of your travel stats to share.",
@@ -1416,6 +1431,36 @@ function openShareDialog() {
       shareVariant = btn.dataset.variant;
       refreshShareCard();
     });
+  });
+
+  const photoControls = document.getElementById("share-photo-controls");
+  const photoInput = document.getElementById("share-photo-input");
+  const photoFilenameEl = document.getElementById("share-photo-filename");
+
+  document.getElementById("share-photo-toggle").addEventListener("change", (e) => {
+    sharePhotoEnabled = e.target.checked;
+    photoControls.hidden = !sharePhotoEnabled;
+    refreshShareCard();
+  });
+
+  document.getElementById("share-photo-pick-btn").addEventListener("click", () => photoInput.click());
+
+  photoInput.addEventListener("change", () => {
+    const file = photoInput.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      sharePhotoImage = img;
+      photoFilenameEl.textContent = file.name;
+      refreshShareCard();
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      photoFilenameEl.textContent = "Could not load that image.";
+    };
+    img.src = url;
   });
 
   document.getElementById("btn-share-image").addEventListener("click", async () => {

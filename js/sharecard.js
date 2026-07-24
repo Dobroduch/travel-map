@@ -24,6 +24,10 @@ const HEADER_FONT = "'Poppins', -apple-system, 'Segoe UI', Roboto, sans-serif";
 const LEFT_MARGIN = 96;
 const STAT_MAX_WIDTH = 620;
 
+// Reserved area for a user-added photo, left empty (or filled with a cover-fit
+// crop of their chosen image) beneath a compacted stat block.
+const PHOTO_RECT = { x: LEFT_MARGIN, y: 860, width: STORY_WIDTH - LEFT_MARGIN * 2, height: 880, radius: 28 };
+
 // Poppins is loaded via a Google Fonts <link> in index.html; kick off (and
 // cache) the load here so the header can request it directly instead of
 // silently falling back to the system font on the first draw.
@@ -124,12 +128,64 @@ function drawPlaneIcon(ctx, cx, cy, size, rotation, color) {
   ctx.restore();
 }
 
-function drawHeader(ctx, title) {
+function drawHeader(ctx, title, compact = false) {
   ctx.fillStyle = PALETTE.ink;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
-  ctx.font = `800 66px ${HEADER_FONT}`;
-  ctx.fillText(title, LEFT_MARGIN, 210);
+  ctx.font = `800 ${compact ? 54 : 66}px ${HEADER_FONT}`;
+  ctx.fillText(title, LEFT_MARGIN, compact ? 170 : 210);
+}
+
+function roundedRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/** The reserved photo slot: a dashed placeholder with a hint label when no
+ * photo has been chosen yet, or the user's own image cover-fit and cropped
+ * to the rounded rect once one is loaded. */
+function drawPhotoArea(ctx, photoImage) {
+  const { x, y, width, height, radius } = PHOTO_RECT;
+
+  ctx.save();
+  roundedRectPath(ctx, x, y, width, height, radius);
+  ctx.clip();
+  if (photoImage) {
+    const scale = Math.max(width / photoImage.width, height / photoImage.height);
+    const drawW = photoImage.width * scale;
+    const drawH = photoImage.height * scale;
+    ctx.drawImage(photoImage, x + (width - drawW) / 2, y + (height - drawH) / 2, drawW, drawH);
+  } else {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
+    ctx.fillRect(x, y, width, height);
+  }
+  ctx.restore();
+
+  ctx.save();
+  roundedRectPath(ctx, x, y, width, height, radius);
+  ctx.lineWidth = 3;
+  if (photoImage) {
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+  } else {
+    ctx.strokeStyle = PALETTE.muted;
+    ctx.globalAlpha = 0.6;
+    ctx.setLineDash([14, 12]);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  if (!photoImage) {
+    ctx.fillStyle = PALETTE.muted;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `600 30px ${FONT}`;
+    ctx.fillText("Add your photo here", x + width / 2, y + height / 2);
+  }
 }
 
 function drawFooter(ctx) {
@@ -167,15 +223,20 @@ function fitFontSize(ctx, text, maxWidth, maxSize, minSize, weight = 800) {
 
 /** The big left-aligned stacked stat list — value huge and bold (auto-shrunk
  * to fit), label small/muted/uppercase beneath. Returns the y position after
- * the last entry, so captions can follow it. */
-function drawStatList(ctx, entries, startY, rowGap) {
+ * the last entry, so captions can follow it. `compact` shrinks the whole list
+ * (smaller max sizes, tighter label gap) to leave room for a photo below it. */
+function drawStatList(ctx, entries, startY, rowGap, compact = false) {
   const labelMaxWidth = STORY_WIDTH - LEFT_MARGIN * 2;
+  const valueMaxSize = compact ? 100 : 148;
+  const labelGap = compact ? 34 : 44;
+  const labelMaxSize = compact ? 26 : 32;
+  const labelMinSize = compact ? 15 : 18;
   let y = startY;
   for (const { value, label } of entries) {
     // 32px floor (not the usual short-number range) so a long country or place
     // name — "United States of America", "British Indian Ocean Territory" —
     // still shrinks enough to fit rather than overflowing the box.
-    const size = fitFontSize(ctx, value, STAT_MAX_WIDTH, 148, 32);
+    const size = fitFontSize(ctx, value, STAT_MAX_WIDTH, valueMaxSize, 32);
     ctx.fillStyle = PALETTE.accent;
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
@@ -183,10 +244,10 @@ function drawStatList(ctx, entries, startY, rowGap) {
     ctx.fillText(value, LEFT_MARGIN, y);
 
     const upperLabel = label.toUpperCase();
-    const labelSize = fitFontSize(ctx, upperLabel, labelMaxWidth, 32, 18, 600);
+    const labelSize = fitFontSize(ctx, upperLabel, labelMaxWidth, labelMaxSize, labelMinSize, 600);
     ctx.fillStyle = PALETTE.muted;
     ctx.font = `600 ${labelSize}px ${FONT}`;
-    ctx.fillText(upperLabel, LEFT_MARGIN, y + 44);
+    ctx.fillText(upperLabel, LEFT_MARGIN, y + labelGap);
 
     y += rowGap;
   }
@@ -214,14 +275,24 @@ const VARIANT_TITLES = {
  *   and top airline as smaller captions
  * - "countries": countries + cities visited, home base as a caption
  * - "highlights": the four headline numbers from both, stacked together
+ *
+ * `options.withPhoto` compacts the stat block and reserves a rounded rect
+ * below it — filled with `options.photoImage` if one's been chosen, else a
+ * dashed placeholder — for the user to drop their own photo into. The
+ * decorative ring/squiggle motif is skipped in that mode so it doesn't
+ * compete with the photo for attention.
  */
-export function drawShareCard(ctx, variant, stats) {
+export function drawShareCard(ctx, variant, stats, options = {}) {
+  const { withPhoto = false, photoImage = null } = options;
+
   ctx.clearRect(0, 0, STORY_WIDTH, STORY_HEIGHT);
   drawBackground(ctx);
-  drawRingCluster(ctx, STORY_WIDTH * 0.88, STORY_HEIGHT * 0.19);
-  drawFlightSquiggle(ctx);
-  drawPlaneIcon(ctx, STORY_WIDTH * 0.86, STORY_HEIGHT * 0.315, 46, -0.55, PALETTE.accent);
-  drawHeader(ctx, VARIANT_TITLES[variant] || VARIANT_TITLES.highlights);
+  if (!withPhoto) {
+    drawRingCluster(ctx, STORY_WIDTH * 0.88, STORY_HEIGHT * 0.19);
+    drawFlightSquiggle(ctx);
+    drawPlaneIcon(ctx, STORY_WIDTH * 0.86, STORY_HEIGHT * 0.315, 46, -0.55, PALETTE.accent);
+  }
+  drawHeader(ctx, VARIANT_TITLES[variant] || VARIANT_TITLES.highlights, withPhoto);
 
   let entries;
   let startY;
@@ -239,8 +310,13 @@ export function drawShareCard(ctx, variant, stats) {
     if (stats.furthestDistanceText) {
       entries.push({ value: stats.furthestDistanceText, label: `Furthest — ${stats.furthestPlaceName}` });
     }
-    startY = entries.length > 2 ? 760 : 980;
-    rowGap = entries.length > 2 ? 195 : 230;
+    if (withPhoto) {
+      startY = entries.length > 2 ? 260 : 420;
+      rowGap = entries.length > 2 ? 140 : 170;
+    } else {
+      startY = entries.length > 2 ? 760 : 980;
+      rowGap = entries.length > 2 ? 195 : 230;
+    }
     if (stats.homeBaseName) captions.push(`Home base: ${stats.homeBaseName}`);
   } else if (variant === "flights") {
     entries = [
@@ -248,8 +324,8 @@ export function drawShareCard(ctx, variant, stats) {
       { value: stats.distanceText, label: "Distance flown" },
       { value: stats.durationText, label: "Time in the air" },
     ];
-    startY = 820;
-    rowGap = 210;
+    startY = withPhoto ? 260 : 820;
+    rowGap = withPhoto ? 140 : 210;
     if (stats.comparisonText) captions.push(stats.comparisonText);
     if (stats.topAirlineName) captions.push(`Flying most with ${stats.topAirlineName}`);
   } else {
@@ -259,16 +335,18 @@ export function drawShareCard(ctx, variant, stats) {
       { value: String(stats.flightCount), label: stats.flightCount === 1 ? "Flight" : "Flights" },
       { value: stats.distanceText, label: "Flown" },
     ];
-    startY = 760;
-    rowGap = 195;
+    startY = withPhoto ? 260 : 760;
+    rowGap = withPhoto ? 140 : 195;
   }
 
-  const afterY = drawStatList(ctx, entries, startY, rowGap);
-  let capY = afterY + 8;
+  const afterY = drawStatList(ctx, entries, startY, rowGap, withPhoto);
+  let capY = afterY + (withPhoto ? 6 : 8);
   for (const caption of captions) {
     drawCaption(ctx, capY, caption);
-    capY += 46;
+    capY += withPhoto ? 34 : 46;
   }
+
+  if (withPhoto) drawPhotoArea(ctx, photoImage);
 
   drawFooter(ctx);
 }
