@@ -1,24 +1,34 @@
 import { resolveCoords } from "./flightstats.js";
 
+// CARTO's free basemaps.cartocdn.com raster tiles now require a registered
+// API key (they started serving "API KEY REQUIRED" watermark tiles to
+// anonymous requests) — Esri's equivalent Gray Canvas service is still free
+// and keyless, split into a base (terrain/land shading) and reference
+// (labels/boundaries) layer that stack the same way CARTO's single combined
+// tile used to sit beneath the app's own map layers.
 function buildBasemapStyle(dark) {
-  const variant = dark ? "dark_all" : "light_all";
+  const variant = dark ? "Dark_Gray" : "Light_Gray";
+  const base = `https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_${variant}_Base/MapServer/tile/{z}/{y}/{x}`;
+  const reference = `https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_${variant}_Reference/MapServer/tile/{z}/{y}/{x}`;
   return {
     version: 8,
     sources: {
       basemap: {
         type: "raster",
-        tiles: [
-          `https://a.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}{r}.png`,
-          `https://b.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}{r}.png`,
-          `https://c.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}{r}.png`,
-          `https://d.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}{r}.png`,
-        ],
+        tiles: [base],
         tileSize: 256,
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        attribution: "Esri, HERE, Garmin, FAO, NOAA, USGS",
+      },
+      "basemap-labels": {
+        type: "raster",
+        tiles: [reference],
+        tileSize: 256,
       },
     },
-    layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+    layers: [
+      { id: "basemap", type: "raster", source: "basemap" },
+      { id: "basemap-labels", type: "raster", source: "basemap-labels" },
+    ],
   };
 }
 

@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v68";
+const CACHE_VERSION = "v69";
 const APP_CACHE = `travel-map-app-${CACHE_VERSION}`;
 const TILE_CACHE = `travel-map-tiles-${CACHE_VERSION}`;
 
@@ -62,7 +62,7 @@ self.addEventListener("activate", (event) => {
 });
 
 function isTileRequest(url) {
-  return /basemaps\.cartocdn\.com/.test(url);
+  return /arcgisonline\.com/.test(url);
 }
 
 self.addEventListener("fetch", (event) => {
