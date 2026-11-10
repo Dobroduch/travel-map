@@ -20,6 +20,8 @@ import { searchPlaces } from "./geocode.js";
 import { lookupAircraftType } from "./aircraftlookup.js";
 import { getSyncConfig, saveSyncConfig, connect as connectSync, pullRemote, pushRemote, watchRemote, disconnect as disconnectSync } from "./sync.js";
 import { drawShareCard, shareOrDownloadImage, ensureHeaderFont } from "./sharecard.js";
+import { drawContinentHeatmap } from "./heatmap.js";
+import { CONTINENTS, continentOf } from "./continents.js";
 import {
   computeFlightStats,
   computeFlightBreakdown,
@@ -720,6 +722,47 @@ function parseDateSafe(str) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+const VISIT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** How many separate visits a set of dates amounts to. Dates falling within
+ * 30 days of the first date of a visit belong to that same visit (so a trip
+ * touching several cities in one country is one visit); the next date past
+ * that window starts a new visit. Unparseable/missing dates count one each. */
+function countVisitsFromDates(dateStrs) {
+  const times = [];
+  let count = 0;
+  for (const s of dateStrs) {
+    const d = s ? parseDateSafe(s) : null;
+    if (d) times.push(d.getTime());
+    else count += 1;
+  }
+  times.sort((a, b) => a - b);
+  let windowStart = null;
+  for (const t of times) {
+    if (windowStart === null || t - windowStart > VISIT_WINDOW_MS) {
+      count += 1;
+      windowStart = t;
+    }
+  }
+  return count;
+}
+
+/** Visits to one country across its cities. Cities logged with no dates count
+ * once each (lifetime only); with `year`, only dates in that year count. */
+function countCountryVisits(cities, year) {
+  const dates = [];
+  let undated = 0;
+  for (const c of cities) {
+    const cd = c.dates || [];
+    if (!cd.length) {
+      if (!year) undated += 1;
+    } else {
+      for (const d of cd) if (!year || d.slice(0, 4) === String(year)) dates.push(d);
+    }
+  }
+  return countVisitsFromDates(dates) + undated;
+}
+
 /** Whether a city belongs to a trip — either explicitly selected into it, or
  * (for trips that still use a date range) having a visit date inside it. */
 function cityInTrip(trip, city) {
@@ -941,7 +984,7 @@ function renderTimelinePage() {
   let html = `<div class="page-panel"><h2>Timeline</h2>${renderTripsSection()}`;
 
   for (const c of countries) {
-    const count = c.entries.length;
+    const count = countVisitsFromDates(c.entries.map((e) => e.dateStr));
     html += `
       <details class="timeline-country">
         <summary class="timeline-country-summary">
@@ -1091,8 +1134,7 @@ const YEAR_CHART_METRICS = {
   km: { label: "Distance", format: (v) => formatDistanceKm(v) },
 };
 
-function buildYearChartSvg(yearlyStats, metric) {
-  const width = 640;
+function buildYearChartSvg(yearlyStats, metric, width = 640) {
   const height = 200;
   const paddingTop = 22;
   const paddingBottom = 26;
@@ -1265,13 +1307,38 @@ function renderFlightsPage() {
   const yearChartWrap = document.getElementById("year-chart-wrap");
   if (yearChartWrap) {
     const metricBtns = [...container.querySelectorAll(".year-chart-metric-btn")];
-    yearChartWrap.innerHTML = buildYearChartSvg(yearlyStats, yearChartMetric);
+    const mobileMq = window.matchMedia("(max-width: 639px)");
+    const MAX_COLS = 8;
+    let start = Math.max(0, yearlyStats.length - MAX_COLS); // newest window by default
+    const drawChart = () => {
+      const paged = mobileMq.matches && yearlyStats.length > MAX_COLS;
+      if (!paged) {
+        yearChartWrap.innerHTML = buildYearChartSvg(yearlyStats, yearChartMetric);
+        return;
+      }
+      start = Math.min(Math.max(0, start), yearlyStats.length - MAX_COLS);
+      const slice = yearlyStats.slice(start, start + MAX_COLS);
+      yearChartWrap.innerHTML = `
+        <div class="year-chart-paged">
+          <button type="button" class="year-chart-arrow" data-dir="-1" aria-label="Earlier years"${start === 0 ? " disabled" : ""}>‹</button>
+          <div class="year-chart-paged-svg">${buildYearChartSvg(slice, yearChartMetric, 300)}</div>
+          <button type="button" class="year-chart-arrow" data-dir="1" aria-label="Later years"${start + MAX_COLS >= yearlyStats.length ? " disabled" : ""}>›</button>
+        </div>`;
+      yearChartWrap.querySelectorAll(".year-chart-arrow").forEach((a) => {
+        a.addEventListener("click", () => {
+          start += Number(a.dataset.dir) * MAX_COLS;
+          drawChart();
+        });
+      });
+    };
+    drawChart();
+    mobileMq.addEventListener?.("change", drawChart);
     metricBtns.forEach((btn) => {
       btn.addEventListener("click", () => {
         metricBtns.forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         yearChartMetric = btn.dataset.metric;
-        yearChartWrap.innerHTML = buildYearChartSvg(yearlyStats, yearChartMetric);
+        drawChart();
       });
     });
   }
@@ -1597,9 +1664,9 @@ function setupHomeCity() {
 
 let shareVariant = "highlights";
 
-/** The non-home country you've logged the most visits to — a "visit" is one
- * dated stay (a city with several trip dates counts several times), falling
- * back to 1 for cities logged without specific dates. When `year` is given,
+/** The non-home country you've logged the most visits to — a "visit" is a
+ * cluster of dates within 30 days (see countVisitsFromDates), with each
+ * undated city counting once. When `year` is given,
  * only dates in that year count (cities with no date in that year are
  * excluded, rather than falling back to the "counts as 1" lifetime rule). */
 function computeMostVisitedCountry(year) {
@@ -1609,14 +1676,7 @@ function computeMostVisitedCountry(year) {
     if (homeBaseCodes.has(code)) continue;
     const cities = visibleCities(index.citiesByCountry.get(code) || []);
     if (!cities.length) continue;
-    let visits = 0;
-    for (const c of cities) {
-      if (year) {
-        visits += (c.dates || []).filter((d) => d.slice(0, 4) === String(year)).length;
-      } else {
-        visits += Math.max(1, (c.dates || []).length);
-      }
-    }
+    const visits = countCountryVisits(cities, year);
     if (!visits) continue;
     if (!best || visits > best.visits) {
       best = { code, visits, name: cities[0].country || countryNameForCode(code) };
@@ -1723,11 +1783,72 @@ function computeShareStats(year) {
 let sharePhotoEnabled = false;
 let sharePhotoImage = null;
 let shareYear = "";
+let shareContinent = "europe";
+let shareHeatmapMetric = "trips";
+
+/** Per-country counts for the heatmap card. "trips": how many of the trips
+ * created in Timeline → Trips include a city in that country. "places": how
+ * many distinct cities were visited there. With `year`, only cities with a
+ * date in that year count. */
+function computeHeatmapStats(year, metric = shareHeatmapMetric, continentKey = null) {
+  const visits = new Map();
+  const add = (code, n) => {
+    if (n > 0) visits.set(code, (visits.get(code) || 0) + n);
+  };
+  const citiesWithCountry = new Set();
+  const countedTrips = new Set();
+  const byCountry = new Map();
+  for (const city of visibleCities(data.cities)) {
+    citiesWithCountry.add(city.countryCode);
+    if (!byCountry.has(city.countryCode)) byCountry.set(city.countryCode, []);
+    byCountry.get(city.countryCode).push(city);
+  }
+  for (const [code, cities] of byCountry) {
+    if (continentKey && continentOf(code) !== continentKey) continue;
+    const active = cities.filter((c) => countCountryVisits([c], year) > 0);
+    if (metric === "places") {
+      // each distinct city counts once, however often it was visited
+      add(code, active.length);
+    } else {
+      const inCountry = (data.trips || []).filter((trip) => active.some((c) => cityInTrip(trip, c)));
+      inCountry.forEach((t) => countedTrips.add(t.id));
+      add(code, inCountry.length);
+    }
+  }
+  if (!year && metric === "places") {
+    for (const code of data.visitedCountries) if (!citiesWithCountry.has(code) && (!continentKey || continentOf(code) === continentKey)) add(code, 1);
+  }
+  const names = new Map(countryList.map((c) => [c.code, c.name]));
+  return { visits, names, homeCodes: new Set(data.homeBaseCountries || []), year: year || null, unit: metric === "places" ? "place" : "trip", total: metric === "places" ? null : countedTrips.size };
+}
+
+/** The continent with the most visited countries, as the dialog's default. */
+function busiestContinentKey() {
+  const counts = new Map();
+  for (const code of computeHeatmapStats("", "places").visits.keys()) {
+    const k = continentOf(code);
+    if (k) counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  let best = "europe";
+  let bestN = 0;
+  for (const [k, n] of counts) if (n > bestN) [best, bestN] = [k, n];
+  return best;
+}
+
+function shareFileStem() {
+  return shareVariant === "heatmap" ? `heatmap-${shareContinent}${shareHeatmapMetric === "places" ? "-places" : ""}` : shareVariant;
+}
 
 function refreshShareCard() {
   const canvas = document.getElementById("share-canvas");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
+  if (shareVariant === "heatmap") {
+    const continent = CONTINENTS.find((c) => c.key === shareContinent) || CONTINENTS[0];
+    const stats = computeHeatmapStats(shareYear, shareHeatmapMetric, continent.key);
+    drawContinentHeatmap(ctx, countriesGeojson, continent, stats);
+    return;
+  }
   drawShareCard(ctx, shareVariant, computeShareStats(shareYear), { withPhoto: sharePhotoEnabled, photoImage: sharePhotoImage });
 }
 
@@ -1736,6 +1857,20 @@ const SHARE_DIALOG_BODY = `
     <button type="button" class="share-variant-btn active" data-variant="highlights">Highlights</button>
     <button type="button" class="share-variant-btn" data-variant="flights">Flights</button>
     <button type="button" class="share-variant-btn" data-variant="countries">Countries</button>
+    <button type="button" class="share-variant-btn" data-variant="heatmap">Heatmap</button>
+  </div>
+
+  <div class="form-row" id="share-continent-row" hidden>
+    <label for="share-continent-select">Continent</label>
+    <select id="share-continent-select">
+      ${CONTINENTS.map((c) => `<option value="${c.key}">${c.name}</option>`).join("")}
+    </select>
+    <label for="share-metric-select">Show</label>
+    <select id="share-metric-select">
+      <option value="trips">Number of trips</option>
+      <option value="places">Number of places</option>
+    </select>
+    <p class="settings-hint" id="share-metric-hint">Trips are taken only from the trips you create in Timeline → Trips.</p>
   </div>
 
   <div class="form-row share-year-row">
@@ -1745,7 +1880,7 @@ const SHARE_DIALOG_BODY = `
     </select>
   </div>
 
-  <label class="checkbox-label">
+  <label class="checkbox-label" id="share-photo-label">
     <input type="checkbox" id="share-photo-toggle" />
     Add your own photo
   </label>
@@ -1783,8 +1918,27 @@ function openShareDialog() {
       variantBtns.forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       shareVariant = btn.dataset.variant;
+      const isHeatmap = shareVariant === "heatmap";
+      document.getElementById("share-continent-row").hidden = !isHeatmap;
+      document.getElementById("share-photo-label").hidden = isHeatmap;
+      document.getElementById("share-photo-controls").hidden = isHeatmap || !sharePhotoEnabled;
       refreshShareCard();
     });
+  });
+
+  shareHeatmapMetric = "trips";
+  document.getElementById("share-metric-select").addEventListener("change", (e) => {
+    shareHeatmapMetric = e.target.value;
+    document.getElementById("share-metric-hint").hidden = shareHeatmapMetric !== "trips";
+    refreshShareCard();
+  });
+
+  shareContinent = busiestContinentKey();
+  const continentSelect = document.getElementById("share-continent-select");
+  continentSelect.value = shareContinent;
+  continentSelect.addEventListener("change", (e) => {
+    shareContinent = e.target.value;
+    refreshShareCard();
   });
 
   const yearSelect = document.getElementById("share-year-select");
@@ -1833,7 +1987,7 @@ function openShareDialog() {
     const canvas = document.getElementById("share-canvas");
     canvas.toBlob(async (blob) => {
       if (!blob) return;
-      const result = await shareOrDownloadImage(blob, `travel-map-${shareVariant}${shareYear ? `-${shareYear}` : ""}.png`);
+      const result = await shareOrDownloadImage(blob, `travel-map-${shareFileStem()}${shareYear ? `-${shareYear}` : ""}.png`);
       if (result === "downloaded") showOfflineToast("Image downloaded");
     }, "image/png");
   });
@@ -1845,7 +1999,7 @@ function openShareDialog() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `travel-map-${shareVariant}${shareYear ? `-${shareYear}` : ""}.png`;
+      a.download = `travel-map-${shareFileStem()}${shareYear ? `-${shareYear}` : ""}.png`;
       document.body.appendChild(a);
       a.click();
       a.remove();

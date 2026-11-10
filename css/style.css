@@ -680,6 +680,35 @@ button {
   display: block;
 }
 
+.year-chart-paged {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.year-chart-paged-svg {
+  flex: 1;
+  min-width: 0;
+}
+
+.year-chart-arrow {
+  flex: none;
+  width: 32px;
+  height: 44px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.3));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.year-chart-arrow:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
 .year-chart-bar {
   fill: var(--accent);
 }

@@ -9,7 +9,7 @@ export const STORY_HEIGHT = 1920;
 // Every color here is already used somewhere in the app's own UI — orange for
 // flight routes, teal for the home-base marker, green for visited countries —
 // so the decorative shapes double as a callback to what they mean on the map.
-const PALETTE = {
+export const PALETTE = {
   bgDeep: "#14150f",
   bgVignette: "#0b0c08",
   ink: "#f3f1ea",
@@ -19,9 +19,9 @@ const PALETTE = {
   green: "#81c784",
 };
 
-const FONT = "-apple-system, 'Segoe UI', Roboto, sans-serif";
-const HEADER_FONT = "'Poppins', -apple-system, 'Segoe UI', Roboto, sans-serif";
-const LEFT_MARGIN = 96;
+export const FONT = "-apple-system, 'Segoe UI', Roboto, sans-serif";
+export const HEADER_FONT = "'Poppins', -apple-system, 'Segoe UI', Roboto, sans-serif";
+export const LEFT_MARGIN = 96;
 const STAT_MAX_WIDTH = 620;
 
 // Reserved area for a user-added photo, left empty (or filled with a cover-fit
@@ -41,7 +41,7 @@ export function ensureHeaderFont() {
   return headerFontReady;
 }
 
-function drawBackground(ctx) {
+export function drawBackground(ctx) {
   const gradient = ctx.createRadialGradient(
     STORY_WIDTH * 0.5,
     STORY_HEIGHT * 0.4,
@@ -128,7 +128,7 @@ function drawPlaneIcon(ctx, cx, cy, size, rotation, color) {
   ctx.restore();
 }
 
-function drawHeader(ctx, title, compact = false) {
+export function drawHeader(ctx, title, compact = false) {
   ctx.fillStyle = PALETTE.ink;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
@@ -136,7 +136,7 @@ function drawHeader(ctx, title, compact = false) {
   ctx.fillText(title, LEFT_MARGIN, compact ? 170 : 210);
 }
 
-function roundedRectPath(ctx, x, y, w, h, r) {
+export function roundedRectPath(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -188,7 +188,7 @@ function drawPhotoArea(ctx, photoImage) {
   }
 }
 
-function drawFooter(ctx) {
+export function drawFooter(ctx) {
   const cy = STORY_HEIGHT - 110;
 
   ctx.beginPath();
@@ -211,7 +211,7 @@ function drawFooter(ctx) {
 
 /** Shrinks the font until `text` fits within maxWidth, so a long value (a big
  * km figure, a long airline name) can never overflow its slot. */
-function fitFontSize(ctx, text, maxWidth, maxSize, minSize, weight = 800) {
+export function fitFontSize(ctx, text, maxWidth, maxSize, minSize, weight = 800) {
   let size = maxSize;
   ctx.font = `${weight} ${size}px ${FONT}`;
   while (size > minSize && ctx.measureText(text).width > maxWidth) {
