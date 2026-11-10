@@ -1,4 +1,5 @@
 import { resolveCoords } from "./flightstats.js";
+import { rampColor, heatT } from "./heatmap.js";
 
 // CARTO's free basemaps.cartocdn.com raster tiles now require a registered
 // API key (they started serving "API KEY REQUIRED" watermark tiles to
@@ -215,7 +216,14 @@ function countCitiesByCountry(cities) {
   return counts;
 }
 
-function markVisited(countriesGeojson, visitedCountries, cities, homeBaseCodes) {
+/** Per-country heatmap values (and their precomputed ramp color) for the map's heatmap mode. */
+function heatProps(code, heat) {
+  if (!heat) return { heat: 0, heatColor: "#000000" };
+  const value = heat.visits.get(code) || 0;
+  return { heat: value, heatColor: value ? rampColor(heatT(value, heat.max)) : "#000000" };
+}
+
+function markVisited(countriesGeojson, visitedCountries, cities, homeBaseCodes, heat = null) {
   const visitedSet = new Set(visitedCountries);
   const cityCounts = countCitiesByCountry(cities);
   return {
@@ -231,10 +239,27 @@ function markVisited(countriesGeojson, visitedCountries, cities, homeBaseCodes) 
         visited: visitedSet.has(f.id),
         homeBase: homeBaseCodes.has(f.id),
         cityCount: cityCounts.get(f.id) || 0,
+        ...heatProps(f.id, heat),
       },
     })),
   };
 }
+
+const DEFAULT_FILL_COLOR = (theme) => [
+  "case",
+  ["get", "homeBase"],
+  theme.homeBase,
+  ["interpolate", ["linear"], ["get", "cityCount"], 0, theme.fillLow, 3, theme.fillMid, 6, theme.fillHigh],
+];
+const DEFAULT_FILL_OPACITY = [
+  "case",
+  ["get", "homeBase"],
+  0.45,
+  ["get", "visited"],
+  ["interpolate", ["linear"], ["get", "cityCount"], 0, 0.18, 6, 0.38],
+  0,
+];
+const DEFAULT_OUTLINE_OPACITY = ["case", ["any", ["get", "visited"], ["get", "homeBase"]], 0.75, 0];
 
 export function createMap({
   container,
@@ -246,6 +271,7 @@ export function createMap({
   onCitySelect,
   onCountrySelect,
   onFlightSelect,
+  getHeat = null,
 }) {
   const theme = dark ? THEME.dark : THEME.light;
 
@@ -279,11 +305,26 @@ export function createMap({
   let routesVisible = true;
   let homeCitiesVisible = true;
   let allCitiesVisible = true;
+  let heatEnabled = false;
+  let currentData = data;
+
+  /** {visits: Map, max} for heatmap mode, or null when it is off. */
+  function currentHeat() {
+    if (!heatEnabled || !getHeat) return null;
+    const { visits, homeCodes } = getHeat();
+    let max = 1;
+    for (const [code, v] of visits) if (!homeCodes.has(code) && v > max) max = v;
+    return { visits, max };
+  }
+
+  function buildCountriesData(d) {
+    return markVisited(countriesGeojson, d.visitedCountries, d.cities, new Set(d.homeBaseCountries || []), currentHeat());
+  }
 
   map.on("load", () => {
     map.addSource("countries", {
       type: "geojson",
-      data: markVisited(countriesGeojson, data.visitedCountries, data.cities, new Set(data.homeBaseCountries || [])),
+      data: buildCountriesData(data),
     });
 
     map.addLayer({
@@ -445,6 +486,8 @@ export function createMap({
       map.getCanvas().style.cursor = hit ? "pointer" : "";
     });
 
+    applyCountryPaint();
+
     const bounds = new maplibregl.LngLatBounds();
     data.cities.forEach((c) => bounds.extend([c.lng, c.lat]));
     map.fitBounds(bounds, { padding: 60, duration: 0, maxZoom: 4 });
@@ -456,10 +499,37 @@ export function createMap({
     if (!map.getSource("cities")) return;
     currentCitiesById = newCitiesById;
     const homeBaseCodes = new Set(newData.homeBaseCountries || []);
-    map.getSource("countries").setData(markVisited(countriesGeojson, newData.visitedCountries, newData.cities, homeBaseCodes));
+    currentData = newData;
+    map.getSource("countries").setData(buildCountriesData(newData));
     map.getSource("routes").setData(connectionsToGeoJson(newData.connections, newCitiesById, airportsByCode));
     map.getSource("route-airports").setData(connectionAirportPointsGeoJson(newData.connections, newCitiesById, airportsByCode));
     map.getSource("cities").setData(citiesToGeoJson(newData.cities, homeBaseCodes, tripCityIdSet(newData.cities, newData.trips)));
+  }
+
+  /** Switches the country fill between the normal "visited" shading and the visit-count heatmap. */
+  function applyCountryPaint() {
+    if (!map.getLayer("countries-fill")) return;
+    if (heatEnabled) {
+      map.setPaintProperty("countries-fill", "fill-color", ["case", ["get", "homeBase"], theme.homeBase, ["get", "heatColor"]]);
+      map.setPaintProperty("countries-fill", "fill-opacity", ["case", ["get", "homeBase"], 0.7, [">", ["get", "heat"], 0], 0.8, 0]);
+      map.setPaintProperty("countries-outline", "line-opacity", ["case", ["any", ["get", "homeBase"], [">", ["get", "heat"], 0]], 0.9, 0]);
+    } else {
+      map.setPaintProperty("countries-fill", "fill-color", DEFAULT_FILL_COLOR(theme));
+      map.setPaintProperty("countries-fill", "fill-opacity", DEFAULT_FILL_OPACITY);
+      map.setPaintProperty("countries-outline", "line-opacity", DEFAULT_OUTLINE_OPACITY);
+    }
+  }
+
+  /** Turns heatmap mode on/off; call again while on to recompute after the metric changes. */
+  function setHeatmap(enabled) {
+    heatEnabled = enabled;
+    if (!map.getSource("countries")) return;
+    map.getSource("countries").setData(buildCountriesData(currentData));
+    applyCountryPaint();
+  }
+
+  function isHeatmapOn() {
+    return heatEnabled;
   }
 
   /** Redraws only the routes source from a caller-filtered subset of connections (e.g. by year/airline). */
@@ -529,6 +599,8 @@ export function createMap({
     setVisibleConnections,
     pickLocation,
     cancelPickLocation,
+    setHeatmap,
+    isHeatmapOn,
     setRoutesVisible,
     areRoutesVisible,
     setHomeCitiesVisible,

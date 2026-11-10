@@ -80,6 +80,26 @@
         <button id="toggle-flight-filter" class="map-toggle-btn" type="button" aria-pressed="false" aria-label="Filter flights">
           <span data-icon="filter"></span>
         </button>
+        <button id="toggle-heatmap" class="map-toggle-btn" type="button" aria-pressed="false" aria-label="Switch to heatmap" title="Heatmap">
+          <span data-icon="flame"></span>
+        </button>
+      </div>
+
+      <div id="heatmap-panel" class="flight-filter-panel" hidden>
+        <div class="form-row">
+          <label for="heatmap-metric">Heatmap</label>
+          <select id="heatmap-metric">
+            <option value="">Off</option>
+            <option value="trips">Number of trips</option>
+            <option value="places">Number of places</option>
+          </select>
+        </div>
+        <div id="heatmap-legend" hidden>
+          <div class="heatmap-legend-bar"></div>
+          <div class="heatmap-legend-labels"><span id="heatmap-legend-min">1</span><span id="heatmap-legend-max">1</span></div>
+          <div class="heatmap-legend-home"><span class="heatmap-home-dot"></span>Home</div>
+        </div>
+        <p class="settings-hint" id="heatmap-hint" hidden>Trips come from the trips you create in Timeline → Trips.</p>
       </div>
 
       <div id="flight-filter-panel" class="flight-filter-panel" hidden>

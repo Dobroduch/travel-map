@@ -25,7 +25,7 @@ const RAMP = [
   [1, [232, 92, 56]],
 ];
 
-function rampColor(t) {
+export function rampColor(t) {
   const x = Math.min(1, Math.max(0, t));
   for (let i = 1; i < RAMP.length; i++) {
     if (x <= RAMP[i][0]) {
@@ -39,7 +39,7 @@ function rampColor(t) {
   return `rgb(${RAMP[RAMP.length - 1][1].join(", ")})`;
 }
 
-function heatT(visits, maxVisits) {
+export function heatT(visits, maxVisits) {
   if (maxVisits <= 1) return 0.55;
   return Math.sqrt((visits - 1) / (maxVisits - 1)) * 0.9 + 0.1;
 }

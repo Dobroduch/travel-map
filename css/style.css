@@ -1999,3 +1999,46 @@ button {
     padding-bottom: calc(30px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* --- map heatmap mode --- */
+
+.heatmap-legend-bar {
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, rgb(88, 124, 84), rgb(226, 178, 70), rgb(232, 92, 56));
+}
+
+.heatmap-legend-labels {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+}
+
+.heatmap-legend-home {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.heatmap-home-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--teal, #2f4858);
+}
+
+#heatmap-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+#heatmap-legend[hidden] {
+  display: none;
+}
+
+#heatmap-panel .settings-hint {
+  margin: 0;
+}

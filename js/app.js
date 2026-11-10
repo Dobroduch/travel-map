@@ -114,6 +114,7 @@ function persistAndRefreshMap() {
   saveData(data);
   refreshIndexes();
   mapHandle.updateData(data, index.citiesById);
+  updateHeatmapLegend();
   applyFlightFilter();
   schedulePushToSync();
   updateOnboardingHint();
@@ -2162,6 +2163,7 @@ function recreateMap(dark) {
   const routesVisible = mapHandle.areRoutesVisible();
   const homeCitiesVisible = mapHandle.areHomeCitiesVisible();
   const allCitiesVisible = mapHandle.areAllCitiesVisible();
+  const heatmapOn = mapHandle.isHeatmapOn();
 
   mapHandle.map.remove();
 
@@ -2175,6 +2177,7 @@ function recreateMap(dark) {
     onCitySelect: (props) => openCityDialog(props.id),
     onCountrySelect: (props) => openCountryDialog(props.code),
     onFlightSelect: (props) => openFlightDialog(props.index),
+    getHeat: () => computeHeatmapStats("", mapHeatMetric),
   });
 
   mapHandle.map.once("load", () => {
@@ -2182,6 +2185,7 @@ function recreateMap(dark) {
     mapHandle.setRoutesVisible(routesVisible);
     mapHandle.setHomeCitiesVisible(homeCitiesVisible);
     mapHandle.setAllCitiesVisible(allCitiesVisible);
+    if (heatmapOn) mapHandle.setHeatmap(true);
     applyFlightFilter();
     updateRoutesToggleButton();
     updateHomeCitiesToggleButton();
@@ -2215,6 +2219,44 @@ function setupHomeCitiesToggle() {
     const next = !mapHandle.areHomeCitiesVisible();
     mapHandle.setHomeCitiesVisible(next);
     updateHomeCitiesToggleButton();
+  });
+}
+
+let mapHeatMetric = "trips";
+
+function updateHeatmapLegend() {
+  const stats = computeHeatmapStats("", mapHeatMetric);
+  let max = 1;
+  for (const [code, v] of stats.visits) if (!stats.homeCodes.has(code) && v > max) max = v;
+  const unit = stats.unit;
+  document.getElementById("heatmap-legend-min").textContent = `1 ${unit}`;
+  document.getElementById("heatmap-legend-max").textContent = `${max} ${unit}${max === 1 ? "" : "s"}`;
+  document.getElementById("heatmap-hint").hidden = mapHeatMetric !== "trips";
+}
+
+function setupHeatmapToggle() {
+  const btn = document.getElementById("toggle-heatmap");
+  const panel = document.getElementById("heatmap-panel");
+  const metricSelect = document.getElementById("heatmap-metric");
+  const legend = document.getElementById("heatmap-legend");
+  const hint = document.getElementById("heatmap-hint");
+
+  btn.addEventListener("click", () => {
+    panel.hidden = !panel.hidden;
+  });
+
+  metricSelect.addEventListener("change", () => {
+    const on = metricSelect.value !== "";
+    if (on) mapHeatMetric = metricSelect.value;
+    mapHandle.setHeatmap(on);
+    btn.setAttribute("aria-pressed", String(on));
+    legend.hidden = !on;
+    if (on) updateHeatmapLegend();
+    else hint.hidden = true;
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#heatmap-panel") && !e.target.closest("#toggle-heatmap")) panel.hidden = true;
   });
 }
 
@@ -2358,6 +2400,7 @@ async function main() {
     onCitySelect: (props) => openCityDialog(props.id),
     onCountrySelect: (props) => openCountryDialog(props.code),
     onFlightSelect: (props) => openFlightDialog(props.index),
+    getHeat: () => computeHeatmapStats("", mapHeatMetric),
   });
 
   initEditor(mapHandle);
@@ -2377,6 +2420,7 @@ async function main() {
   updateHomeCitiesToggleButton();
   setupAllCitiesToggle();
   updateAllCitiesToggleButton();
+  setupHeatmapToggle();
   setupFlightFilter();
 
   window.addEventListener("offline", () => showOfflineToast("You're offline — showing cached map"));
